@@ -55,6 +55,7 @@ ACCENTS = {
     "happy": (0.180, 0.624, 0.878),
     "sad": (0.369, 0.561, 0.847),
     "thinking": (0.271, 0.725, 0.867),
+    "sleepy": (0.545, 0.478, 0.851),
 }
 GLOWS = {
     "neutral": (0.50, 0.88, 1.0),
@@ -63,6 +64,7 @@ GLOWS = {
     "happy": (0.63, 0.95, 1.0),
     "sad": (0.57, 0.74, 1.0),
     "thinking": (0.49, 0.90, 0.97),
+    "sleepy": (0.72, 0.66, 1.0),
 }
 
 LINES = [
@@ -94,6 +96,7 @@ MOOD_LINES = {
     "happy": "I did it! The rice is still warm. Double win.",
     "sad": "I'm not crying. My face is just leaking.",
     "thinking": "Think. Think. The answer is in here somewhere.",
+    "sleepy": "Zzz… five more minutes… the rice can wait…",
 }
 REACT_LINES = {
     "working": [
@@ -151,6 +154,7 @@ APP_RULES = [
 APP_COMMENT_COOLDOWN = 180       # seconds between any two app comments
 APP_RULE_COOLDOWN = 20 * 60      # seconds before the same rule fires again
 GRAVITY = 2600                   # px/s²
+SLOW_STATES = {"sleepy"}
 PERCH_SNAP = 36                  # how close her feet must be to a window top to perch
 
 GREETING = "Hi, I'm Whale-chan. Drag me anywhere. Right-click me for options."
@@ -491,8 +495,6 @@ class Mascot(Gtk.Window):
         self.sleeping = False
         self.slept_at = 0.0
         self.speed = 1.0
-        self.zzz = []
-        self._zzz_next = 0.0
         self.perch = None         # {"xid": client window, "dx": offset from its left edge}
         self.falling = None       # {"vy": px/s, "t": last step}
         self.entrance = None      # (started, initial y offset)
@@ -588,8 +590,12 @@ class Mascot(Gtk.Window):
             return
         self.stop_clock()
         self._fast = fast
-        interval = 16 if fast else int(1000 / (self.frames.fps * self.speed))
+        interval = 16 if fast else int(1000 * self._frame_step() / (self.frames.fps * self.speed))
         self._tick_id = GLib.timeout_add(interval, self._tick)
+
+    def _frame_step(self):
+        """Slow states play every other baked frame (10 fps) to save CPU."""
+        return 2 if self.state in SLOW_STATES else 1
 
     def _transient(self):
         return bool(self.fade or self.hop_started or self.particles or self.drag
@@ -607,15 +613,10 @@ class Mascot(Gtk.Window):
                 self.entrance = None
         if self.paused_frame is None:
             count = self.frames.count(self.state)
-            self.frame = int((now - self.start) * self.frames.fps * self.speed) % count
+            n = int((now - self.start) * self.frames.fps * self.speed)
+            self.frame = (n - n % self._frame_step()) % count
         if self.fade and now - self.fade[1] > self.fade[2]:
             self.fade = None
-        if self.sleeping and now >= self._zzz_next:
-            self._zzz_next = now + 1.4
-            self.zzz.append({"t0": now, "life": 3.0, "dx": 24 + random.random() * 12,
-                             "size": 13 + random.random() * 5})
-        if self.zzz:
-            self.zzz = [z for z in self.zzz if now - z["t0"] < z["life"]]
         if self.hop_started and now - self.hop_started > 0.72:
             self.hop_started = None
         if self.particles:
@@ -703,38 +704,11 @@ class Mascot(Gtk.Window):
                 cr.paint_with_alpha(alpha)
                 cr.restore()
 
-        if self.zzz:
-            glyph = self._zzz_glyph()
-            for z in self.zzz:
-                t = (now - z["t0"]) / z["life"]
-                scale = z["size"] * (0.7 + 0.6 * t) / 24
-                x = MARGIN + art["x"] + art["w"] * 0.66 + z["dx"] * t + 5 * math.sin(t * 6)
-                y = oy + art["y"] + art["h"] * 0.17 - 58 * t
-                alpha = min(1.0, t / 0.15) * (1 - t) * opacity
-                cr.save()
-                cr.translate(x, y)
-                cr.scale(scale, scale)
-                cr.set_source_surface(glyph, 0, 0)
-                cr.paint_with_alpha(alpha)
-                cr.restore()
         return True
 
-    def _zzz_glyph(self):
-        """A 'z' rendered once at 24px; drawing it scaled avoids a new font size every frame."""
-        glyph = getattr(self, "_zzz_surface", None)
-        if glyph is None:
-            glyph = cairo.ImageSurface(cairo.FORMAT_ARGB32, 24, 30)
-            cr = cairo.Context(glyph)
-            layout = PangoCairo.create_layout(cr)
-            layout.set_font_description(Pango.FontDescription("Sans Bold 24px"))
-            layout.set_text("z", -1)
-            cr.set_source_rgb(0.18, 0.32, 0.62)
-            PangoCairo.show_layout(cr, layout)
-            self._zzz_surface = glyph
-        return glyph
-
     def _glow_surface(self):
-        if self._glow is not None and self._glow[0] == self.mood:
+        look = self._look()
+        if self._glow is not None and self._glow[0] == look:
             return self._glow[1]
         art = self.frames.art
         surface = self.get_window().create_similar_surface(
@@ -743,7 +717,7 @@ class Mascot(Gtk.Window):
         cx = MARGIN + art["x"] + art["w"] * 0.5
         cy = MARGIN + art["y"] + art["h"] * 0.48
         radius = art["w"] * 0.59
-        r, g, b = GLOWS[self.mood]
+        r, g, b = GLOWS[look]
         grad = cairo.RadialGradient(cx, cy, 0, cx, cy, radius)
         grad.add_color_stop_rgba(0, r, g, b, 0.34)
         grad.add_color_stop_rgba(0.33, r * 0.8, g * 0.85, b, 0.19)
@@ -751,8 +725,12 @@ class Mascot(Gtk.Window):
         grad.add_color_stop_rgba(0.72, r * 0.8, g * 0.85, b, 0)
         cr.set_source(grad)
         cr.paint()
-        self._glow = (self.mood, surface)
+        self._glow = (look, surface)
         return surface
+
+    def _look(self):
+        """The mood she visibly shows (a nap shows as sleepy over neutral)."""
+        return "sleepy" if self.sleeping else self.mood
 
     # -- moods ----------------------------------------------------------------------
     def _current_strain(self):
@@ -827,15 +805,12 @@ class Mascot(Gtk.Window):
         self.gaze = None
         self.bubble.dismiss()
         self.say(SLEEP_LINE, 3500)
-        self.speed = 0.5
         self._switch_state("sleepy", fade=0.8)
 
     def wake(self, announce=True):
         if not self.sleeping:
             return
         self.sleeping = False
-        self.speed = 1.0
-        self.zzz = []
         self._switch_state(self._state_for(self.mood, 0), fade=0.25)
         self.hop()
         if announce and time.monotonic() - self.slept_at > 20:
@@ -953,10 +928,7 @@ class Mascot(Gtk.Window):
         saved as the startup mood.
         """
         mood = mood if mood in MOODS else "neutral"
-        if self.sleeping:
-            self.sleeping = False
-            self.speed = 1.0
-            self.zzz = []
+        self.sleeping = False
         for timer in self._think_timers:
             GLib.source_remove(timer)
         self._think_timers = []
@@ -1009,7 +981,7 @@ class Mascot(Gtk.Window):
             text = self._lines[self._line_index % len(self._lines)]
             self._line_index += 1
         ax, top, bottom = self._bubble_anchor()
-        self.bubble.show_text(text, ACCENTS[self.mood], ax, top, bottom,
+        self.bubble.show_text(text, ACCENTS[self._look()], ax, top, bottom,
                               self.workarea_at((ax, top)), duration)
         return text
 

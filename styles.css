@@ -18,6 +18,7 @@ html[data-mood="smug"] { --accent: #c19138; --accent-deep: #8c6420; --accent-sof
 html[data-mood="happy"] { --accent: #269ad4; --accent-deep: #116b99; --accent-soft: rgba(38, 154, 212, 0.12); }
 html[data-mood="sad"] { --accent: #6688d4; --accent-deep: #4262aa; --accent-soft: rgba(102, 136, 212, 0.12); }
 html[data-mood="thinking"] { --accent: #3ea5bb; --accent-deep: #267d8f; --accent-soft: rgba(62, 165, 187, 0.12); }
+html[data-mood="sleepy"] { --accent: #8170cf; --accent-deep: #5a4aa6; --accent-soft: rgba(129, 112, 207, 0.12); }
 
 * { box-sizing: border-box; }
 
@@ -460,7 +461,7 @@ button { font: inherit; }
 .mood-buttons {
   display: grid;
   flex: 1;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -491,6 +492,7 @@ button { font: inherit; }
 .mood-happy { --btn: #218fc6; }
 .mood-sad { --btn: #5f82ce; }
 .mood-thinking { --btn: #3999ae; }
+.mood-sleepy { --btn: #7666c4; }
 
 .mood-btn:hover {
   background: color-mix(in srgb, var(--btn) 7%, transparent);

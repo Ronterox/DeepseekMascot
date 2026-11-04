@@ -11,7 +11,7 @@ import os
 import shlex
 from pathlib import Path
 
-MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking"]
+MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking", "sleepy"]
 EVENTS = {
     # event: (mood, seconds before returning to neutral or None)
     "working": ("thinking", None),

@@ -7,9 +7,9 @@ retimes every idle loop so they all share one period (seamless loops), steps the
 animation clock frame by frame and snapshots the result. The desktop app then
 only plays images back.
 
-Besides the six moods it bakes variants of `neutral` with CSS-variable
-overrides: gaze directions (same loop period as neutral, so the app can switch
-between them frame-for-frame) and a sleepy pose.
+Besides the moods it bakes variants of `neutral` with CSS-variable overrides:
+gaze directions, with the same loop period as neutral, so the app can switch
+between them frame-for-frame.
 
 Usage: python3 desktop/bake.py [--svg PATH] [--width 260] [--fps 20] [--cache DIR]
        python3 desktop/bake.py --preview sheet.png [--states a,b] [--time MS]
@@ -55,8 +55,6 @@ GAZE = {
     "look-ul": {"--ix": "-8px", "--iy": "-11px", "--hr": "-3deg", "--hx": "-2px", "--hy": "-4px"},
     "look-ur": {"--ix": "8px", "--iy": "-11px", "--hr": "3deg", "--hx": "2px", "--hy": "-4px"},
 }
-SLEEPY = {"--hr": "9deg", "--hx": "4px", "--hy": "9px", "--ahoge": "36deg", "--ear": "18deg",
-          "--tail": "14deg", "--blush": ".95"}
 STATES = [
     state("neutral", "neutral"),
     state("angry", "angry"),
@@ -67,16 +65,10 @@ STATES = [
     state("thinking-1", "thinking", 1),
     state("thinking-2", "thinking", 2),
     *[state(f"neutral-{name}", "neutral", vars=v, sync="neutral") for name, v in GAZE.items()],
-    state("sleepy", "neutral", vars=SLEEPY, cls="st-sleepy"),
+    state("sleepy", "sleepy"),
 ]
-# Extra rules for states that need more than variables.
-STATE_CSS = """
-.st-sleepy .eye-open { opacity: 0 !important; }
-.st-sleepy .eye-happy {
-  opacity: 1 !important; transform-box: fill-box; transform-origin: 50% 50%;
-  transform: translateY(4px) scaleY(-0.7);
-}
-"""
+# Extra rules for states that need more than variables (none at the moment).
+STATE_CSS = ""
 VIEWBOX = (900, 1060)
 # Room around the art box for effects that overflow the viewBox (thought
 # bubbles, hearts, steam). Everything is auto-cropped afterwards.
@@ -105,9 +97,19 @@ PAGE_JS = r"""
       return anims().length;
     },
     durations() {
+      // Only animations that can be seen in this state decide the loop period;
+      // effect layers of other moods keep animating at opacity 0.
+      const hidden = (el) => {
+        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+          const cs = getComputedStyle(p);
+          if (cs.opacity === '0' || cs.display === 'none' || cs.visibility === 'hidden') return true;
+        }
+        return false;
+      };
       const out = [];
       for (const a of anims()) {
         if (!(a instanceof CSSAnimation)) continue;
+        if (a.effect.target && hidden(a.effect.target)) continue;
         const t = a.effect.getTiming();
         if (t.iterations === Infinity && t.duration > 0) out.push(t.duration);
       }

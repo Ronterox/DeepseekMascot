@@ -31,14 +31,15 @@
   const GREETING =
     "Hi, I'm Whale-chan. Drag me anywhere—I'm portable and only slightly hungry.";
 
-  const MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking"];
+  const MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking", "sleepy"];
   const MOOD_LINES = {
     neutral: "Back to standby. Very professional.",
     angry: "I'm not angry. I'm aggressively recalibrating.",
     smug: "Oh, you want an explanation? Adorable.",
     happy: "I did it! The rice is still warm. Double win.",
     sad: "I'm not crying. My face is just leaking.",
-    thinking: "Think. Think. The answer is in here somewhere."
+    thinking: "Think. Think. The answer is in here somewhere.",
+    sleepy: "Zzz… five more minutes… the rice can wait…"
   };
 
   const template = document.createElement("template");
@@ -374,6 +375,7 @@
       .rig[data-mood="happy"] { --bubble-accent: #2e9fe0; }
       .rig[data-mood="sad"] { --bubble-accent: #5e8fd8; }
       .rig[data-mood="thinking"] { --bubble-accent: #45b9dd; }
+      .rig[data-mood="sleepy"] { --bubble-accent: #8b7ad9; }
 
       .rig[data-mood="angry"] .aura {
         background: radial-gradient(circle at 50% 48%,
@@ -413,6 +415,15 @@
           rgba(68, 178, 210, .13) 36%,
           rgba(68, 178, 210, .03) 58%,
           rgba(68, 178, 210, 0) 72%);
+        animation-duration: 4.8s;
+      }
+
+      .rig[data-mood="sleepy"] .aura {
+        background: radial-gradient(circle at 50% 48%,
+          rgba(190, 172, 255, .3) 0%,
+          rgba(139, 122, 217, .13) 36%,
+          rgba(139, 122, 217, .03) 58%,
+          rgba(139, 122, 217, 0) 72%);
         animation-duration: 4.8s;
       }
 

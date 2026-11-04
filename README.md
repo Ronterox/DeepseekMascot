@@ -79,12 +79,13 @@ can be toggled from **right-click → Behaviour**:
 | Follow the cursor | In the neutral mood her eyes and head glance toward the pointer (left, right, up-left, up-right). She looks ahead again once it has been still for 6 s. |
 | Stand on windows | Drop her near a window's top edge and she stands on it, riding along when you move the window. When it closes, minimizes, maximizes or leaves the workspace, she falls to the next window below or to the floor. |
 | Comment on apps | Switching to some apps or tabs (YouTube, other AIs, code editors, terminals, Blender/Godot/Krita…) gets a remark. At most one every 3 min, and the same remark at most every 20 min. Only in the neutral mood. |
-| Nap when you're away | After 4 min without input (`sleep_after` in the config) she dozes off with closed eyes and drifting z's, at half frame rate. Any input, or a click on her, wakes her. |
+| Nap when you're away | After 4 min without input (`sleep_after` in the config) she switches to the `sleepy` mood (played at 10 fps). Any input, or a click on her, wakes her. |
 | Hide for fullscreen apps | Off by default. When on, she disappears while the active window is fullscreen on her monitor (videos, games, slides) and comes back afterwards. |
 
-Switching workspaces makes her glide in. Gaze and sleep are baked as extra states
-(`neutral-look-*`, `sleepy`) from CSS-variable overrides. Gaze states share
-neutral's loop period, so swapping them mid-loop only moves her eyes and head.
+Switching workspaces makes her glide in. Gaze is baked as extra `neutral-look-*`
+states from CSS-variable overrides. They share neutral's loop period, so swapping
+them mid-loop only moves her eyes and head. Each state's loop period is fitted to
+the animations visible in it.
 `python3 desktop/bake.py --preview sheet.png` renders one frame of every state into
 a contact sheet, handy when tweaking the art.
 
@@ -97,7 +98,7 @@ returns instantly. Symlink it onto your `PATH` if you like:
 ```bash
 whalechan start                          # launch in the background (no-op if running)
 whalechan say "Build passed" -m happy --for 8
-whalechan mood thinking                  # neutral angry smug happy sad thinking
+whalechan mood thinking                  # neutral angry smug happy sad thinking sleepy
 whalechan mood thinking --strain 0       # hold a strain level instead of escalating
 whalechan react success                  # working success failure error attention idle
 whalechan react fail "3 tests broke"     # aliases: start done pass fail crash waiting …
@@ -150,6 +151,7 @@ ln -s "$PWD/integrations/opencode/whalechan" ~/.config/opencode/plugins/whalecha
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "whalechan -q react working --quiet-line" }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "whalechan -q react success" }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "whalechan -q react error" }] }],
     "Notification": [{ "hooks": [{ "type": "command", "command": "whalechan -q react attention" }] }]
   }
 }
@@ -241,7 +243,7 @@ const whale = document.querySelector("deepseek-mascot");
 
 whale.say("Custom line from your app.");
 whale.speak("Alias of say().");
-whale.setMood("happy");        // neutral | angry | smug | happy | sad | thinking
+whale.setMood("happy");        // neutral | angry | smug | happy | sad | thinking | sleepy
 whale.setMood("sad", { announce: false }); // switch pose without a speech bubble
 whale.mood;                    // current mood
 whale.feed();                  // rice particles + a random rice-related line
@@ -288,7 +290,8 @@ group, so CSS can pose and animate it independently:
 | Shoulders / elbows | `.arm-l`, `.arm-r` › `.u-pose` › `.u-anim` › `.f-pose` › `.f-anim` | shoulder, elbow |
 | Tail and fluke | `.tail-pose` › `.tail-wag` › `.fluke` | tail root, fluke base |
 | Fin-ears, ahoge, brows, irises | `.ear`, `.ahoge`, `.brow-l/r`, `.iris-pose` | each part |
-| Expression layers | `.lid-*`, `.eye-happy`, `.eye-squeeze`, `.eye-swirl`, `.m-*` mouths | — |
+| Sleepy plush | `.pillow` › `.pillow-squish` | plush bottom |
+| Expression layers | `.lid-*`, `.eye-happy`, `.eye-squeeze`, `.eye-swirl`, `.eye-sleep`, `.m-*` mouths | — |
 
 Each mood is a **full-body pose**, not just a face swap:
 
@@ -302,6 +305,7 @@ Each mood is a **full-body pose**, not just a face swap:
 | `thinking` (`data-strain="0"`) | hand on chin, other arm across her body, tapping | glance up, "o" mouth, thought bubble, `?` |
 | `thinking` (`data-strain="1"`) | hands pressed to her temples, shaking | `> <` eyes, sweat drop |
 | `thinking` (`data-strain="2"`) | overthinking: arms flailing, vibrating, spinning ahoge | swirl eyes, steam, scribbled thought, `?!` |
+| `sleepy` | dozing on her feet hugging a whale plush; slow breathing, head nods off and jerks back up | closed eyes, breathing "o" mouth, snot bubble, floating Z's |
 
 Poses are CSS custom properties on the SVG root (for example `--lu`/`--lf` for the
 left shoulder and elbow angles, `--hr` for head tilt, `--tail`, `--ahoge`), and each
