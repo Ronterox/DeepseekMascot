@@ -2,3 +2,5 @@
 .shots/
 .refs/
 *.log
+__pycache__/
+*.pyc
