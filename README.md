@@ -58,6 +58,9 @@ How it works:
 - **Playback.** [`desktop/whalechan.py`](desktop/whalechan.py) is plain GTK and
   cairo with no WebKit at runtime. The current mood's frames are uploaded once as X server
   pixmaps, so playback is a server-side copy (~1–2% CPU).
+- **Poof transitions.** Mood changes, waking up, appearing and hiding play an
+  anime smoke poof: a squash-and-stretch bounce, white puffs and sparkles in the
+  new mood's colour. The baked loops swap mid-squash, hidden by the smoke.
 - **Click-through.** The window is small and moves with her. Its X11 input
   shape is her baked body silhouette, so clicks and scrolls next to her (and on
   floating effects like the thought bubble) reach the windows underneath.

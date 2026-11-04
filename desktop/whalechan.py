@@ -44,7 +44,7 @@ DEFAULT_SVG = ROOT / "assets" / "whale-chan.svg"
 CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "whalechan" / "config.json"
 
 FPS = 20
-MARGIN = 48           # transparent room around the sprite for hops, glow and rice
+MARGIN = 64           # transparent room around the sprite for hops, glow, rice and poofs
 EDGE = 8              # keep the sprite this far inside the work area
 SIZES = {"Small": 200, "Medium": 260, "Large": 340}
 OPACITIES = [1.0, 0.85, 0.7, 0.5]
@@ -174,6 +174,29 @@ def hop_offset(t):
             k = k * k * (3 - 2 * k)
             return v0 + (v1 - v0) * k
     return 0
+
+
+POOF_TIME = 0.6      # seconds a mood-change poof lasts
+
+
+def squash(t, strength):
+    """Squash-and-stretch scale (sx, sy) t seconds into a poof."""
+    keys = [(0, 1, 1), (0.07, 1.12, 0.86), (0.18, 0.93, 1.09), (0.3, 1.03, 0.97), (0.42, 1, 1)]
+    for (t0, x0, y0), (t1, x1, y1) in zip(keys, keys[1:]):
+        if t <= t1:
+            k = (t - t0) / (t1 - t0)
+            k = k * k * (3 - 2 * k)
+            sx, sy = x0 + (x1 - x0) * k, y0 + (y1 - y0) * k
+            return 1 + (sx - 1) * strength, 1 + (sy - 1) * strength
+    return 1.0, 1.0
+
+
+def star_path(cr, r, inner=0.3):
+    for i in range(8):
+        a = math.radians(i * 45 - 90)
+        rr = r if i % 2 == 0 else r * inner
+        (cr.move_to if i == 0 else cr.line_to)(rr * math.cos(a), rr * math.sin(a))
+    cr.close_path()
 
 
 def rounded_rect(cr, x, y, w, h, radii):
@@ -498,6 +521,8 @@ class Mascot(Gtk.Window):
         self.perch = None         # {"xid": client window, "dx": offset from its left edge}
         self.falling = None       # {"vy": px/s, "t": last step}
         self.entrance = None      # (started, initial y offset)
+        self.poof = None          # smoke puffs + squash on mood changes, appearing and vanishing
+        self._vanish_timer = None
         self._think_timers = []
         self._revert_timer = None
         self._tick_id = None
@@ -599,7 +624,8 @@ class Mascot(Gtk.Window):
 
     def _transient(self):
         return bool(self.fade or self.hop_started or self.particles or self.drag
-                    or self.inertia or self.falling or self.entrance or abs(self.tilt) > 0.05)
+                    or self.inertia or self.falling or self.entrance or self.poof
+                    or abs(self.tilt) > 0.05)
 
     def _tick(self):
         now = time.monotonic()
@@ -617,6 +643,8 @@ class Mascot(Gtk.Window):
             self.frame = (n - n % self._frame_step()) % count
         if self.fade and now - self.fade[1] > self.fade[2]:
             self.fade = None
+        if self.poof and now - self.poof["t0"] > POOF_TIME:
+            self.poof = None
         if self.hop_started and now - self.hop_started > 0.72:
             self.hop_started = None
         if self.particles:
@@ -655,16 +683,36 @@ class Mascot(Gtk.Window):
         if self.hop_started:
             oy += hop_offset(min(1.0, (now - self.hop_started) / 0.72))
 
+        poof = self.poof
+        sprite_alpha = 1.0
+        if poof:
+            pt = now - poof["t0"]
+            if poof["vanish"]:
+                sprite_alpha = max(0.0, 1 - pt / 0.16)
+            elif poof["appear"]:
+                sprite_alpha = min(1.0, pt / 0.12)
+        opacity_all = opacity
+        opacity *= sprite_alpha
+
         if self.config["glow"]:
             breathe = 0.5 + 0.5 * math.sin(now * 2 * math.pi / 6.5)
             cr.set_source_surface(self._glow_surface(), 0, oy - MARGIN)
             cr.paint_with_alpha(opacity * (0.72 + 0.28 * breathe))
+
+        if poof:
+            self._draw_puffs(cr, now, oy, front=False, opacity=opacity_all)
 
         cr.save()
         if abs(self.tilt) > 0.05:
             px, py = MARGIN + frames.width / 2, oy + frames.height
             cr.translate(px, py)
             cr.rotate(math.radians(self.tilt))
+            cr.translate(-px, -py)
+        if poof and not poof["vanish"]:
+            sx, sy = squash(now - poof["t0"], poof["strength"])
+            px, py = MARGIN + frames.width / 2, oy + frames.feet
+            cr.translate(px, py)
+            cr.scale(sx, sy)
             cr.translate(-px, -py)
         index = self.paused_frame if self.paused_frame is not None else self.frame
         current = frames.surface(self.state, index)
@@ -679,6 +727,9 @@ class Mascot(Gtk.Window):
             cr.set_source_surface(current, MARGIN, oy)
             cr.paint_with_alpha(opacity)
         cr.restore()
+
+        if poof:
+            self._draw_puffs(cr, now, oy, front=True, opacity=opacity_all)
 
         if self.particles:
             layout = PangoCairo.create_layout(cr)
@@ -705,6 +756,90 @@ class Mascot(Gtk.Window):
                 cr.restore()
 
         return True
+
+    def start_poof(self, strength=1.0, appear=False, vanish=False):
+        """Anime smoke poof: puffs around her, sparkles in the mood colour, squash bounce."""
+        art = self.frames.art
+        scale = art["w"] / 260
+        cx, cy = art["x"] + art["w"] * 0.5, art["y"] + art["h"] * 0.56
+        rx, ry = art["w"] * 0.33, art["h"] * 0.35
+        count = 10 if strength >= 1 else 6
+        puffs = []
+        for i in range(count):
+            a = 2 * math.pi * i / count + random.uniform(-0.25, 0.25)
+            puffs.append({
+                "x": cx + math.cos(a) * rx, "y": cy + math.sin(a) * ry,
+                "dx": math.cos(a), "dy": math.sin(a),
+                "r": random.uniform(13, 19) * scale * (0.7 + 0.3 * strength),
+                "delay": random.uniform(0, 0.06), "life": random.uniform(0.42, 0.56),
+                "front": i % 2 == 0, "spin": random.uniform(-1, 1),
+            })
+        sparks = []
+        for _ in range(5 if strength >= 1 else 3):
+            a = random.uniform(0, 2 * math.pi)
+            sparks.append({"dx": math.cos(a), "dy": math.sin(a) * 0.9,
+                           "dist": random.uniform(60, 96) * scale, "size": random.uniform(6, 9) * scale,
+                           "delay": random.uniform(0.02, 0.1), "rot": random.uniform(-2, 2)})
+        self.poof = {"t0": time.monotonic(), "strength": strength, "puffs": puffs, "sparks": sparks,
+                     "center": (cx, cy), "accent": ACCENTS[self._look()],
+                     "appear": appear, "vanish": vanish}
+        self._schedule(fast=True)
+
+    def _draw_puffs(self, cr, now, oy, front, opacity):
+        poof = self.poof
+        scale = self.frames.art["w"] / 260
+        circles = []
+        for p in poof["puffs"]:
+            if p["front"] != front:
+                continue
+            t = (now - poof["t0"] - p["delay"]) / p["life"]
+            if not 0 <= t <= 1:
+                continue
+            e = 1 - (1 - t) ** 2
+            x = MARGIN + p["x"] + p["dx"] * 22 * scale * e
+            y = oy + p["y"] + p["dy"] * 22 * scale * e - 6 * scale * e
+            # pop out fast, stay solid white, then shrink away while fading
+            grow = min(1.0, t / 0.3)
+            r = p["r"] * (0.35 + 0.75 * (1 - (1 - grow) ** 2)) * (1 - 0.35 * max(0.0, (t - 0.55) / 0.45))
+            alpha = min(1.0, (1 - t) / 0.45) * opacity
+            lobes = [(x, y, r)]
+            for k in (-1, 1):
+                ang = p["spin"] + k * 1.1
+                lobes.append((x + math.cos(ang) * r * 0.62, y + math.sin(ang) * r * 0.4 + r * 0.2, r * 0.66))
+            circles.append((lobes, alpha))
+        # outlines first, then white fills on top, so overlapping lobes read as one cloud
+        for lobes, alpha in circles:
+            cr.set_source_rgba(0.62, 0.71, 0.86, alpha * 0.9)
+            for x, y, r in lobes:
+                cr.new_sub_path()
+                cr.arc(x, y, r + 1.6, 0, 2 * math.pi)
+            cr.fill()
+        for lobes, alpha in circles:
+            cr.set_source_rgba(1, 1, 1, alpha)
+            for x, y, r in lobes:
+                cr.new_sub_path()
+                cr.arc(x, y, r, 0, 2 * math.pi)
+            cr.fill()
+        if not front:
+            return
+        cx, cy = poof["center"]
+        r, g, b = poof["accent"]
+        for sp in poof["sparks"]:
+            t = (now - poof["t0"] - sp["delay"]) / 0.45
+            if not 0 <= t <= 1:
+                continue
+            e = 1 - (1 - t) ** 3
+            cr.save()
+            cr.translate(MARGIN + cx + sp["dx"] * sp["dist"] * e, oy + cy + sp["dy"] * sp["dist"] * e)
+            cr.rotate(sp["rot"] * e)
+            size = sp["size"] * math.sin(math.pi * min(1.0, t * 1.2))
+            star_path(cr, max(0.1, size))
+            cr.set_source_rgba(r, g, b, (1 - t * 0.6) * opacity)
+            cr.fill_preserve()
+            cr.set_source_rgba(1, 1, 1, (1 - t) * opacity)
+            cr.set_line_width(1.2)
+            cr.stroke()
+            cr.restore()
 
     def _glow_surface(self):
         look = self._look()
@@ -748,7 +883,7 @@ class Mascot(Gtk.Window):
         name = mood if not strain else f"{mood}-{strain}"
         return name if name in states else mood
 
-    def _switch_state(self, state, fade=0.28, keep_phase=False):
+    def _switch_state(self, state, fade=0.28, keep_phase=False, poof=0.0):
         """Crossfade to another baked state.
 
         keep_phase continues the frame clock, for states baked with the same loop
@@ -757,6 +892,9 @@ class Mascot(Gtk.Window):
         if state == self.state:
             return
         index = self.paused_frame if self.paused_frame is not None else self.frame
+        if poof:
+            fade = min(fade, 0.14)  # swap during the squash, hidden by the smoke
+            self.start_poof(poof)
         self.fade = (self.frames.surface(self.state, index), time.monotonic(), fade)
         self.state = state
         if not keep_phase:
@@ -811,8 +949,7 @@ class Mascot(Gtk.Window):
         if not self.sleeping:
             return
         self.sleeping = False
-        self._switch_state(self._state_for(self.mood, 0), fade=0.25)
-        self.hop()
+        self._switch_state(self._state_for(self.mood, 0), fade=0.25, poof=1.0)
         if announce and time.monotonic() - self.slept_at > 20:
             self.say(random.choice(WAKE_LINES))
 
@@ -928,6 +1065,7 @@ class Mascot(Gtk.Window):
         saved as the startup mood.
         """
         mood = mood if mood in MOODS else "neutral"
+        changed = mood != self.mood or self.sleeping
         self.sleeping = False
         for timer in self._think_timers:
             GLib.source_remove(timer)
@@ -937,12 +1075,12 @@ class Mascot(Gtk.Window):
             self._revert_timer = None
         self.mood = mood
         strain = max(0, min(2, int(strain or 0))) if mood == "thinking" else 0
-        self._switch_state(self._state_for(mood, strain))
+        self._switch_state(self._state_for(mood, strain), poof=1.0 if changed else 0.0)
         if mood == "thinking" and escalate:
             def escalate_to(level):
                 self._think_timers = [t for t in self._think_timers if t != handles.get(level)]
                 if self.mood == "thinking":
-                    self._switch_state(self._state_for("thinking", level))
+                    self._switch_state(self._state_for("thinking", level), poof=0.6)
                 return False
             handles = {}
             for level, delay in zip((1, 2), escalate):
@@ -1140,15 +1278,35 @@ class Mascot(Gtk.Window):
         self._save_position()
         self.say("Back to the usual spot.")
 
-    def hide_all(self):
+    def hide_all(self, animate=True):
         self.bubble.dismiss()
+        if self._vanish_timer:
+            return
+        if animate and self.get_visible():
+            self.start_poof(1.0, vanish=True)
+            self._vanish_timer = GLib.timeout_add(int(POOF_TIME * 1000), self._finish_hide)
+        else:
+            self._finish_hide()
+
+    def _finish_hide(self):
+        self._vanish_timer = None
+        self.poof = None
         self.stop_clock()
         self.hide()
+        return False
+
+    def is_shown(self):
+        """Visible and not in the middle of poofing away."""
+        return self.get_visible() and self._vanish_timer is None
 
     def show_all_again(self):
+        if self._vanish_timer:
+            GLib.source_remove(self._vanish_timer)
+            self._vanish_timer = None
         self.show()
         self._shown_region_key = None
         self.start_clock()
+        self.start_poof(1.0, appear=True)
 
 
 class ControlServer:
@@ -1235,7 +1393,7 @@ class WhaleApp(Gtk.Application):
     # -- lifecycle ----------------------------------------------------------------
     def do_activate(self):
         if self.mascot:
-            if not self.mascot.get_visible():
+            if not self.mascot.is_shown():
                 self.show_mascot()
             self.mascot.say("I'm already here. Only one of me fits on this desktop.")
             return
@@ -1261,6 +1419,7 @@ class WhaleApp(Gtk.Application):
         self.add_window(self.mascot)
         self.mascot.show_all()
         self.mascot.start_clock()
+        self.mascot.start_poof(1.0, appear=True)
         if self.mascot.mood != "neutral":
             self.mascot.set_mood(self.mascot.mood, announce=False)
         self._setup_status_icon(frames)
@@ -1282,7 +1441,7 @@ class WhaleApp(Gtk.Application):
         m = self.mascot
         if m is None:
             return False
-        if m.get_visible() and (self.config["follow"] or m.gaze):
+        if m.is_shown() and (self.config["follow"] or m.gaze):
             pointer = Gdk.Display.get_default().get_default_seat().get_pointer()
             _screen, x, y = pointer.get_position()
             m.update_gaze(x, y)
@@ -1299,7 +1458,7 @@ class WhaleApp(Gtk.Application):
         if m.sleeping and idle < 2000:
             m.wake()
             self._no_sleep_until = now + 30
-        elif (self.config["sleep"] and not m.sleeping and m.get_visible() and m.mood == "neutral"
+        elif (self.config["sleep"] and not m.sleeping and m.is_shown() and m.mood == "neutral"
               and not m.drag and not m.falling and now >= self._no_sleep_until
               and idle >= float(self.config["sleep_after"]) * 1000):
             m.sleep()
@@ -1311,7 +1470,7 @@ class WhaleApp(Gtk.Application):
 
     def _on_desktop(self, old, new):
         m = self.mascot
-        if m and m.get_visible():
+        if m and m.is_shown():
             m.swim_in(new - old)
 
     @staticmethod
@@ -1332,7 +1491,7 @@ class WhaleApp(Gtk.Application):
                           and y < monitor.y + monitor.height and monitor.y < y + h)
         if fullscreen and not self.auto_hidden:
             self.auto_hidden = True
-            if m.get_visible():
+            if m.is_shown():
                 m.hide_all()
         elif not fullscreen and self.auto_hidden:
             self.auto_hidden = False
@@ -1346,7 +1505,7 @@ class WhaleApp(Gtk.Application):
     def _comment_on(self, info):
         m = self.mascot
         now = time.monotonic()
-        if (not info or not self.config["comments"] or not m.get_visible() or m.sleeping
+        if (not info or not self.config["comments"] or not m.is_shown() or m.sleeping
                 or m.drag or m.mood != "neutral" or m.bubble.get_visible()
                 or now - self._last_comment < APP_COMMENT_COOLDOWN):
             return
@@ -1444,7 +1603,7 @@ class WhaleApp(Gtk.Application):
             return {"ok": True}
         if m is None:
             return {"ok": False, "error": "Whale-chan is still baking her frames, try again shortly"}
-        visible = m.get_visible()
+        visible = m.is_shown()
         revert = float(req["for"]) if req.get("for") else None
 
         if cmd == "status":
@@ -1494,7 +1653,7 @@ class WhaleApp(Gtk.Application):
             return {"ok": True}
         if cmd == "toggle":
             self.toggle_mascot()
-            return {"ok": True, "visible": m.get_visible()}
+            return {"ok": True, "visible": m.is_shown()}
         if cmd == "sleep":
             if m.mood != "neutral":
                 m.set_mood("neutral", announce=False)
@@ -1541,7 +1700,7 @@ class WhaleApp(Gtk.Application):
             sub.append(ri)
             return ri
 
-        if m.get_visible():
+        if m.is_shown():
             item("Say something", m.say)
             item("Feed 🍚", m.feed)
         else:
@@ -1585,7 +1744,7 @@ class WhaleApp(Gtk.Application):
 
         menu.append(Gtk.SeparatorMenuItem())
         item("Back to the corner", m.reset_position)
-        if m.get_visible():
+        if m.is_shown():
             item("Hide for 10 minutes", lambda: self.hide_mascot(600))
             item("Hide", lambda: self.hide_mascot(None))
         menu.append(Gtk.SeparatorMenuItem())
@@ -1660,7 +1819,7 @@ class WhaleApp(Gtk.Application):
         self.mascot.show_all_again()
 
     def toggle_mascot(self):
-        if self.mascot.get_visible():
+        if self.mascot.is_shown():
             self.hide_mascot(None)
         else:
             self.show_mascot()
