@@ -8,7 +8,9 @@
   whalechan run -- make test           thinking while it runs, then happy or sad
   whalechan feed | show | hide | toggle | home | sleep | wake | status | quit
 
-Exit codes: 0 ok, 1 rejected request, 3 not running (0 with --quiet).
+Exit codes: 0 ok, 1 rejected request, 3 not running. With --quiet every failure
+(not running, frozen, bad reply) exits 0 silently within QUIET_TIMEOUT seconds, so
+hooks can never slow down or break the tool that calls them.
 """
 
 import argparse
@@ -26,24 +28,33 @@ sys.path.insert(0, str(HERE))
 from protocol import EVENTS, EVENT_ALIASES, MOODS, socket_path  # noqa: E402
 
 NOT_RUNNING = 3
+TIMEOUT = 3.0
+QUIET_TIMEOUT = 0.75
 
 
 class NotRunning(Exception):
     pass
 
 
-def request(payload, timeout=3.0):
+def request(payload, timeout=TIMEOUT):
+    """Send one request; `timeout` bounds the whole exchange, not each step."""
+    deadline = time.monotonic() + timeout
     path = socket_path()
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     try:
         sock.connect(str(path))
     except (FileNotFoundError, ConnectionRefusedError) as exc:
+        sock.close()
         raise NotRunning() from exc
     with sock:
         sock.sendall((json.dumps(payload) + "\n").encode())
         data = b""
         while not data.endswith(b"\n"):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise socket.timeout("timed out")
+            sock.settimeout(remaining)
             chunk = sock.recv(65536)
             if not chunk:
                 break
@@ -51,10 +62,10 @@ def request(payload, timeout=3.0):
     return json.loads(data.decode() or '{"ok": false, "error": "empty reply"}')
 
 
-def try_request(payload):
+def try_request(payload, timeout=1.0):
     try:
-        return request(payload)
-    except (NotRunning, OSError, ValueError):
+        return request(payload, timeout)
+    except Exception:  # noqa: BLE001 - best effort by design
         return None
 
 
@@ -204,11 +215,18 @@ def main(argv=None):
         payload.update(event=args.event, text=" ".join(args.text), quiet=args.quiet_line, key=args.key)
     payload = {k: v for k, v in payload.items() if v is not None and v != "" and v is not False}
 
+    if args.quiet:
+        # Hooks: never fail, never print, never take longer than QUIET_TIMEOUT.
+        try:
+            reply = request(payload, QUIET_TIMEOUT)
+        except Exception:  # noqa: BLE001
+            return 0
+        if args.json:
+            print(json.dumps(reply))
+        return 0
     try:
         reply = request(payload)
     except NotRunning:
-        if args.quiet:
-            return 0
         print("Whale-chan isn't running. Start her with: whalechan start", file=sys.stderr)
         return NOT_RUNNING
     except (OSError, ValueError) as exc:

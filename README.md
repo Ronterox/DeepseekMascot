@@ -152,10 +152,10 @@ ln -s "$PWD/integrations/opencode/whalechan" ~/.config/opencode/plugins/whalecha
 ```json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "whalechan -q react working --quiet-line" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "whalechan -q react success" }] }],
-    "StopFailure": [{ "hooks": [{ "type": "command", "command": "whalechan -q react error" }] }],
-    "Notification": [{ "hooks": [{ "type": "command", "command": "whalechan -q react attention" }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "whalechan -q react working --quiet-line 2>/dev/null || true" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "whalechan -q react success 2>/dev/null || true" }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "whalechan -q react error 2>/dev/null || true" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "whalechan -q react attention 2>/dev/null || true" }] }]
   }
 }
 ```
