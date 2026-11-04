@@ -111,9 +111,11 @@ whalechan sleep | wake
 whalechan feed | show | hide | toggle | home | status | quit
 ```
 
-- `react working` holds the thinking pose and only spirals into overthinking
-  after 45 s and 3 min; `success`/`failure`/`error` return to neutral after
-  8–10 s; `attention` makes her hop.
+- `react working` starts with the hand-on-chin thinking pose, thinks harder
+  (hands on temples) after 5 min and has the overthinking meltdown after 10 min
+  (`think_harder_after` / `think_stressed_after` in the config, in seconds).
+  `success`/`failure`/`error` return to neutral after 8–10 s; `attention` makes
+  her hop.
 - `react --quiet-line` changes mood without a speech bubble; `--key ID` drops
   repeats of the same key within 3 s (for senders that report events twice).
 - `run` passes the command's exit code through, so it can wrap anything.

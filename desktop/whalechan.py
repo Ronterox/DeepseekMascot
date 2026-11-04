@@ -228,7 +228,9 @@ def make_transparent(window):
 class Config:
     DEFAULTS = {"size": 260, "mood": "neutral", "opacity": 1.0, "glow": True, "x": None, "y": None,
                 "follow": True, "perch": True, "comments": True, "sleep": True, "sleep_after": 240,
-                "fullscreen_hide": False}
+                "fullscreen_hide": False,
+                # agent work: chin-tap thinking, then harder after 5 min, stressed after 10
+                "think_harder_after": 300, "think_stressed_after": 600}
 
     def __init__(self, path):
         self.path = path
@@ -1103,8 +1105,10 @@ class Mascot(Gtk.Window):
         """Mood + line for an external event (see protocol.EVENTS)."""
         mood, revert = EVENTS[event]
         if event == "working":
-            # Long-running work: escalate slowly into the overthinking spiral.
-            self.set_mood("thinking", announce=False, escalate=(45, 180), persist=False)
+            # Long-running work: chin-tap first, thinking harder after a while,
+            # the overthinking meltdown only when it really drags on.
+            escalate = (float(self.config["think_harder_after"]), float(self.config["think_stressed_after"]))
+            self.set_mood("thinking", announce=False, escalate=escalate, persist=False)
         elif mood:
             self.set_mood(mood, announce=False, revert_after=revert, persist=False)
         if event == "attention":
