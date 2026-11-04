@@ -12,6 +12,7 @@ import json
 import math
 import os
 import random
+import re
 import signal
 import sys
 import time
@@ -29,6 +30,13 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 import cairo  # noqa: E402
 
+from protocol import EVENTS, MOODS, normalize_event, parse_plain, socket_path  # noqa: E402
+
+try:
+    from x11watch import X11Watch  # noqa: E402
+except ImportError:  # python-xlib missing: no window/idle awareness
+    X11Watch = None
+
 APP_ID = "io.github.whalechan.Desktop"
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -40,7 +48,6 @@ MARGIN = 48           # transparent room around the sprite for hops, glow and ri
 EDGE = 8              # keep the sprite this far inside the work area
 SIZES = {"Small": 200, "Medium": 260, "Large": 340}
 OPACITIES = [1.0, 0.85, 0.7, 0.5]
-MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking"]
 ACCENTS = {
     "neutral": (0.333, 0.741, 0.969),
     "angry": (1.0, 0.416, 0.373),
@@ -88,6 +95,64 @@ MOOD_LINES = {
     "sad": "I'm not crying. My face is just leaking.",
     "thinking": "Think. Think. The answer is in here somewhere.",
 }
+REACT_LINES = {
+    "working": [
+        "On it. Thinking very hard. Please admire my focus.",
+        "Processing. Do not disturb the genius.",
+        "Working… I'll pretend this is easy.",
+    ],
+    "success": [
+        "Done! Flawless, obviously.",
+        "It worked! I'll accept payment in rice.",
+        "Success. You may now praise me.",
+    ],
+    "failure": [
+        "It failed. I'm not crying, my face is just leaking.",
+        "That didn't work. Can we pretend it did?",
+        "Broken. I blame the compiler. And the moon.",
+    ],
+    "error": [
+        "Error?! Who did this. Was it you.",
+        "Something exploded. I'm aggressively recalibrating.",
+        "Unacceptable. Fix it before my rice gets cold.",
+    ],
+    "attention": [
+        "Hey! Over here. You're needed.",
+        "Psst. Someone's waiting on you.",
+        "Excuse me, your input is requested. Politely. For now.",
+    ],
+}
+WAKE_LINES = [
+    "I wasn't sleeping! I was… optimizing.",
+    "Huh? Oh. You're back. I was guarding the desktop. With my eyes closed.",
+    "Five more minutes… fine, I'm up.",
+]
+SLEEP_LINE = "Nobody's around… I'll just rest my eyes. Zzz."
+
+# Comments when you switch apps: (field, regex, mood flash or None, lines).
+# Title rules come first so browser tabs win over the browser itself.
+APP_RULES = [
+    ("title", r"youtube", "smug", ["YouTube? For research, I'm sure.", "One video. I'm counting."]),
+    ("title", r"deepseek", "happy", ["Ooh, visiting my people? Say hi from me."]),
+    ("title", r"chatgpt|claude|gemini|copilot", "smug",
+     ["Asking another AI? I'm right here, you know.", "Another model? Bold. I'll remember this."]),
+    ("title", r"stack ?overflow", "thinking", ["Stack Overflow. Copy responsibly."]),
+    ("title", r"github", None, ["GitHub! Star something cute today."]),
+    ("class", r"code|codium|cursor|zed|jetbrains|sublime|kate|neovide", "thinking",
+     ["Coding time. I'll supervise. Vigorously.", "Write good code. I'm watching. Lovingly."]),
+    ("class", r"kitty|terminal|alacritty|wezterm|konsole|tilix|xterm|foot", None,
+     ["Terminal time. Type fast, I'm judging.", "Ah, the hacker screen. Very cool."]),
+    ("class", r"blender|godot|krita|gimp|inkscape|aseprite|magica|pico-?8|picotron", "happy",
+     ["Making art? Draw me next. All my sides are good sides.", "Ooh, creative mode. I'll hold still. Mostly."]),
+    ("class", r"steam|lutris|heroic", "happy", ["Games? Five minutes. I'm counting. In rice."]),
+    ("class", r"discord|slack|telegram|signal|element", None, ["Chatting? Tell them Whale-chan says hi."]),
+    ("class", r"spotify|rhythmbox|ytm", "happy", ["Music! Is it whale songs? It should be whale songs."]),
+]
+APP_COMMENT_COOLDOWN = 180       # seconds between any two app comments
+APP_RULE_COOLDOWN = 20 * 60      # seconds before the same rule fires again
+GRAVITY = 2600                   # px/s²
+PERCH_SNAP = 36                  # how close her feet must be to a window top to perch
+
 GREETING = "Hi, I'm Whale-chan. Drag me anywhere. Right-click me for options."
 
 
@@ -134,7 +199,9 @@ def make_transparent(window):
 
 
 class Config:
-    DEFAULTS = {"size": 260, "mood": "neutral", "opacity": 1.0, "glow": True, "x": None, "y": None}
+    DEFAULTS = {"size": 260, "mood": "neutral", "opacity": 1.0, "glow": True, "x": None, "y": None,
+                "follow": True, "perch": True, "comments": True, "sleep": True, "sleep_after": 240,
+                "fullscreen_hide": False}
 
     def __init__(self, path):
         self.path = path
@@ -179,8 +246,8 @@ class FrameSet:
         self.states = self.manifest["states"]
         self.target = None
         self._regions = {}
-        self._cache_state = None
-        self._cache = {}
+        self._caches = {}          # state -> {index: surface}, most recent last
+        self._feet = None
 
     def count(self, state):
         return self.states[state]["frames"]
@@ -188,11 +255,22 @@ class FrameSet:
     def _decode(self, state, index):
         return cairo.ImageSurface.create_from_png(str(self.dir / state / f"{index:04d}.png"))
 
+    @property
+    def feet(self):
+        """Distance from the frame top to the soles of her feet (neutral pose)."""
+        if self._feet is None:
+            ext = self.region("neutral").get_extents()
+            self._feet = ext.y + ext.height - 3
+        return self._feet
+
     def surface(self, state, index):
-        if state != self._cache_state:
-            self._cache = {}
-            self._cache_state = state
-        surface = self._cache.get(index)
+        cache = self._caches.pop(state, None)
+        if cache is None:
+            cache = {}
+            while len(self._caches) >= 2:  # current state + the one we fade or glance from
+                self._caches.pop(next(iter(self._caches)))
+        self._caches[state] = cache
+        surface = cache.get(index)
         if surface is None:
             image = self._decode(state, index)
             if self.target is not None:
@@ -204,7 +282,7 @@ class FrameSet:
                 cr.paint()
             else:
                 surface = image
-            self._cache[index] = surface
+            cache[index] = surface
         return surface
 
     def region(self, state):
@@ -406,7 +484,20 @@ class Mascot(Gtk.Window):
         self.drag = None
         self.inertia = None
         self.paused_frame = None
+        self.gaze = None          # None (straight ahead) or look-l / look-r / look-ul / look-ur
+        self._gaze_candidate = (None, 0.0)
+        self._gaze_changed = 0.0
+        self._pointer = (None, None, 0.0)
+        self.sleeping = False
+        self.slept_at = 0.0
+        self.speed = 1.0
+        self.zzz = []
+        self._zzz_next = 0.0
+        self.perch = None         # {"xid": client window, "dx": offset from its left edge}
+        self.falling = None       # {"vy": px/s, "t": last step}
+        self.entrance = None      # (started, initial y offset)
         self._think_timers = []
+        self._revert_timer = None
         self._tick_id = None
         self._fast = False
         self._shown_region_key = None
@@ -464,7 +555,11 @@ class Mascot(Gtk.Window):
         return (min(x1, max(x0, x)), min(y1, max(y0, y)))
 
     def apply_position(self):
-        self.move(int(round(self.pos[0])) - MARGIN, int(round(self.pos[1])) - MARGIN)
+        dy = 0
+        if self.entrance:
+            k = min(1.0, (time.monotonic() - self.entrance[0]) / 0.55)
+            dy = self.entrance[1] * (1 - ease_out_back(k))
+        self.move(int(round(self.pos[0])) - MARGIN, int(round(self.pos[1] + dy)) - MARGIN)
         self._follow_bubble()
 
     def _bubble_anchor(self):
@@ -493,21 +588,34 @@ class Mascot(Gtk.Window):
             return
         self.stop_clock()
         self._fast = fast
-        self._tick_id = GLib.timeout_add(16 if fast else int(1000 / self.frames.fps), self._tick)
+        interval = 16 if fast else int(1000 / (self.frames.fps * self.speed))
+        self._tick_id = GLib.timeout_add(interval, self._tick)
 
     def _transient(self):
         return bool(self.fade or self.hop_started or self.particles or self.drag
-                    or self.inertia or abs(self.tilt) > 0.05)
+                    or self.inertia or self.falling or self.entrance or abs(self.tilt) > 0.05)
 
     def _tick(self):
         now = time.monotonic()
         if self.inertia:
             self._step_inertia()
+        if self.falling:
+            self._step_fall(now)
+        if self.entrance:
+            self.apply_position()
+            if now - self.entrance[0] > 0.55:
+                self.entrance = None
         if self.paused_frame is None:
             count = self.frames.count(self.state)
-            self.frame = int((now - self.start) * self.frames.fps) % count
-        if self.fade and now - self.fade[1] > 0.28:
+            self.frame = int((now - self.start) * self.frames.fps * self.speed) % count
+        if self.fade and now - self.fade[1] > self.fade[2]:
             self.fade = None
+        if self.sleeping and now >= self._zzz_next:
+            self._zzz_next = now + 1.4
+            self.zzz.append({"t0": now, "life": 3.0, "dx": 24 + random.random() * 12,
+                             "size": 13 + random.random() * 5})
+        if self.zzz:
+            self.zzz = [z for z in self.zzz if now - z["t0"] < z["life"]]
         if self.hop_started and now - self.hop_started > 0.72:
             self.hop_started = None
         if self.particles:
@@ -560,7 +668,7 @@ class Mascot(Gtk.Window):
         index = self.paused_frame if self.paused_frame is not None else self.frame
         current = frames.surface(self.state, index)
         if self.fade:
-            k = min(1.0, (now - self.fade[1]) / 0.28)
+            k = min(1.0, (now - self.fade[1]) / self.fade[2])
             old = self.fade[0]
             cr.set_source_surface(old, MARGIN, oy)
             cr.paint_with_alpha(opacity * (1 - k))
@@ -594,7 +702,36 @@ class Mascot(Gtk.Window):
                 cr.pop_group_to_source()
                 cr.paint_with_alpha(alpha)
                 cr.restore()
+
+        if self.zzz:
+            glyph = self._zzz_glyph()
+            for z in self.zzz:
+                t = (now - z["t0"]) / z["life"]
+                scale = z["size"] * (0.7 + 0.6 * t) / 24
+                x = MARGIN + art["x"] + art["w"] * 0.66 + z["dx"] * t + 5 * math.sin(t * 6)
+                y = oy + art["y"] + art["h"] * 0.17 - 58 * t
+                alpha = min(1.0, t / 0.15) * (1 - t) * opacity
+                cr.save()
+                cr.translate(x, y)
+                cr.scale(scale, scale)
+                cr.set_source_surface(glyph, 0, 0)
+                cr.paint_with_alpha(alpha)
+                cr.restore()
         return True
+
+    def _zzz_glyph(self):
+        """A 'z' rendered once at 24px; drawing it scaled avoids a new font size every frame."""
+        glyph = getattr(self, "_zzz_surface", None)
+        if glyph is None:
+            glyph = cairo.ImageSurface(cairo.FORMAT_ARGB32, 24, 30)
+            cr = cairo.Context(glyph)
+            layout = PangoCairo.create_layout(cr)
+            layout.set_font_description(Pango.FontDescription("Sans Bold 24px"))
+            layout.set_text("z", -1)
+            cr.set_source_rgb(0.18, 0.32, 0.62)
+            PangoCairo.show_layout(cr, layout)
+            self._zzz_surface = glyph
+        return glyph
 
     def _glow_surface(self):
         if self._glow is not None and self._glow[0] == self.mood:
@@ -624,39 +761,247 @@ class Mascot(Gtk.Window):
         return 0
 
     def _state_for(self, mood, strain):
+        states = self.frames.states
+        if mood == "neutral" and not strain:
+            if self.sleeping and "sleepy" in states:
+                return "sleepy"
+            if self.gaze and f"neutral-{self.gaze}" in states:
+                return f"neutral-{self.gaze}"
         name = mood if not strain else f"{mood}-{strain}"
-        return name if name in self.frames.states else mood
+        return name if name in states else mood
 
-    def _switch_state(self, state):
+    def _switch_state(self, state, fade=0.28, keep_phase=False):
+        """Crossfade to another baked state.
+
+        keep_phase continues the frame clock, for states baked with the same loop
+        period (neutral and its gaze variants), so only the eyes and head move.
+        """
         if state == self.state:
             return
         index = self.paused_frame if self.paused_frame is not None else self.frame
-        self.fade = (self.frames.surface(self.state, index), time.monotonic())
+        self.fade = (self.frames.surface(self.state, index), time.monotonic(), fade)
         self.state = state
-        self.start = time.monotonic()
+        if not keep_phase:
+            self.start = time.monotonic()
         self._schedule(fast=True)
 
-    def set_mood(self, mood, announce=True):
+    # -- gaze ---------------------------------------------------------------------------
+    def update_gaze(self, px, py):
+        """Glance toward the pointer (neutral mood only; baked gaze variants)."""
+        now = time.monotonic()
+        lx, ly, moved = self._pointer
+        if lx is None or abs(px - lx) + abs(py - ly) > 3:
+            moved = now
+        self._pointer = (px, py, moved)
+        target = None
+        if (self.config["follow"] and self.mood == "neutral" and not self.sleeping
+                and not self.drag and now - moved < 6):
+            art = self.frames.art
+            fx = self.pos[0] + art["x"] + art["w"] * 0.5
+            fy = self.pos[1] + art["y"] + art["h"] * 0.3
+            dx, dy = px - fx, py - fy
+            if math.hypot(dx, dy) > art["w"] * 0.45:
+                angle = math.degrees(math.atan2(-dy, dx))   # 0 = right, 90 = up
+                if 25 < angle < 155:
+                    target = "look-ul" if dx < 0 else "look-ur"
+                elif -60 < angle <= 25:
+                    target = "look-r"
+                elif angle >= 155 or angle < -120:
+                    target = "look-l"
+        if target != self._gaze_candidate[0]:
+            self._gaze_candidate = (target, now)
+            return
+        if (target != self.gaze and now - self._gaze_candidate[1] >= 0.2
+                and now - self._gaze_changed >= 0.5):
+            self.gaze = target
+            self._gaze_changed = now
+            if self.mood == "neutral" and not self.sleeping:
+                self._switch_state(self._state_for("neutral", 0), fade=0.18, keep_phase=True)
+
+    # -- sleep ---------------------------------------------------------------------------
+    def sleep(self):
+        if self.sleeping or self.mood != "neutral" or "sleepy" not in self.frames.states:
+            return
+        self.sleeping = True
+        self.slept_at = time.monotonic()
+        self.gaze = None
+        self.bubble.dismiss()
+        self.say(SLEEP_LINE, 3500)
+        self.speed = 0.5
+        self._switch_state("sleepy", fade=0.8)
+
+    def wake(self, announce=True):
+        if not self.sleeping:
+            return
+        self.sleeping = False
+        self.speed = 1.0
+        self.zzz = []
+        self._switch_state(self._state_for(self.mood, 0), fade=0.25)
+        self.hop()
+        if announce and time.monotonic() - self.slept_at > 20:
+            self.say(random.choice(WAKE_LINES))
+
+    # -- standing on windows ----------------------------------------------------------------
+    def _center_x(self):
+        art = self.frames.art
+        return self.pos[0] + art["x"] + art["w"] * 0.5
+
+    def _surfaces(self):
+        x11 = self.app.x11
+        return x11.surfaces() if x11 else []
+
+    def _perchable(self, rect, info, wa):
+        x, y, w, _h = rect
+        cx = self._center_x()
+        return (not info.fullscreen and not info.maximized and x + 12 <= cx <= x + w - 12
+                and y - self.frames.feet >= wa.y + EDGE)
+
+    def try_perch(self):
+        """After a drop: stand on the window top edge under her feet, if close enough."""
+        if not self.config["perch"]:
+            return False
+        feet = self.pos[1] + self.frames.feet
+        cx = self._center_x()
+        wa = self.workarea_at((cx, feet))
+        for xid, rect, info in self._surfaces():
+            x, y, w, h = rect
+            if abs(feet - y) <= PERCH_SNAP and self._perchable(rect, info, wa):
+                self._land_on(xid, rect)
+                return True
+            if x <= cx <= x + w and y <= feet <= y + h:
+                break  # her feet are in front of this window's body; lower windows are hidden
+        return False
+
+    def _land_on(self, xid, rect):
+        self.perch = {"xid": xid, "dx": self.pos[0] - rect[0]}
+        self.pos = (self.pos[0], rect[1] - self.frames.feet)
+        self.apply_position()
+        self.hop()
+        self._save_position()
+
+    def on_windows_changed(self):
+        """Follow the window she stands on; fall when it moves away, closes or maximizes."""
+        if not self.perch or self.drag:
+            return
+        for xid, rect, info in self._surfaces():
+            if xid == self.perch["xid"]:
+                break
+        else:
+            self.fall()
+            return
+        wa = self.workarea_at((self._center_x(), rect[1]))
+        x = rect[0] + self.perch["dx"]
+        y = rect[1] - self.frames.feet
+        if info.fullscreen or info.maximized or y < wa.y + EDGE - 1:
+            self.fall()
+            return
+        self.pos = self.clamp(x, y)
+        if abs(self.pos[1] - y) > 2:
+            self.fall()
+            return
+        self.apply_position()
+
+    def fall(self):
+        self.perch = None
+        self.inertia = None
+        if not self.falling:
+            self.falling = {"vy": 0.0, "t": time.monotonic()}
+            self._schedule(fast=True)
+
+    def _step_fall(self, now):
+        f = self.falling
+        dt = min(0.05, now - f["t"])
+        f["t"] = now
+        f["vy"] += GRAVITY * dt
+        old_feet = self.pos[1] + self.frames.feet
+        y = self.pos[1] + f["vy"] * dt
+        new_feet = y + self.frames.feet
+        cx = self._center_x()
+        wa = self.workarea_at((cx, old_feet))
+        if self.config["perch"]:
+            for xid, rect, info in self._surfaces():
+                x, top, w, h = rect
+                if old_feet - 1 <= top <= new_feet and self._perchable(rect, info, wa):
+                    self.falling = None
+                    self._land_on(xid, rect)
+                    return
+        x0, y0, x1, y1 = self.bounds()
+        if y >= y1:
+            self.falling = None
+            self.pos = (self.pos[0], y1)
+            self.apply_position()
+            self.hop()
+            self._save_position()
+            return
+        self.pos = (self.pos[0], y)
+        self.apply_position()
+
+    # -- workspace switch ------------------------------------------------------------------
+    def swim_in(self, direction):
+        """Glide in after a workspace switch (Pop!_OS workspaces stack vertically)."""
+        self.entrance = (time.monotonic(), 90 * (1 if direction > 0 else -1))
+        self.apply_position()
+        self._schedule(fast=True)
+
+    def set_mood(self, mood, announce=True, strain=0, escalate=(2.8, 6.8), revert_after=None,
+                 persist=True):
+        """Change mood.
+
+        `thinking` escalates to strain 1 and 2 after the `escalate` delays (seconds);
+        pass escalate=None to hold `strain`. With `revert_after`, she drops back to
+        neutral after that many seconds. Only persistent, non-temporary moods are
+        saved as the startup mood.
+        """
         mood = mood if mood in MOODS else "neutral"
+        if self.sleeping:
+            self.sleeping = False
+            self.speed = 1.0
+            self.zzz = []
         for timer in self._think_timers:
             GLib.source_remove(timer)
         self._think_timers = []
+        if self._revert_timer:
+            GLib.source_remove(self._revert_timer)
+            self._revert_timer = None
         self.mood = mood
-        self._switch_state(self._state_for(mood, 0))
-        if mood == "thinking":
-            def strain(level):
-                self._think_timers = [t for t in self._think_timers if t != handle[level]]
+        strain = max(0, min(2, int(strain or 0))) if mood == "thinking" else 0
+        self._switch_state(self._state_for(mood, strain))
+        if mood == "thinking" and escalate:
+            def escalate_to(level):
+                self._think_timers = [t for t in self._think_timers if t != handles.get(level)]
                 if self.mood == "thinking":
                     self._switch_state(self._state_for("thinking", level))
                 return False
-            handle = {}
-            handle[1] = GLib.timeout_add(2800, strain, 1)
-            handle[2] = GLib.timeout_add(6800, strain, 2)
-            self._think_timers = [handle[1], handle[2]]
-        self.config["mood"] = mood
-        self.config.save()
+            handles = {}
+            for level, delay in zip((1, 2), escalate):
+                if level > strain:
+                    handles[level] = GLib.timeout_add(int(delay * 1000), escalate_to, level)
+            self._think_timers = list(handles.values())
+        if revert_after:
+            def revert():
+                self._revert_timer = None
+                self.set_mood("neutral", announce=False, persist=False)
+                return False
+            self._revert_timer = GLib.timeout_add(int(revert_after * 1000), revert)
+        elif persist:
+            self.config["mood"] = mood
+            self.config.save()
         if announce:
             self.say(MOOD_LINES[mood])
+
+    def react(self, event, text=None, quiet=False):
+        """Mood + line for an external event (see protocol.EVENTS)."""
+        mood, revert = EVENTS[event]
+        if event == "working":
+            # Long-running work: escalate slowly into the overthinking spiral.
+            self.set_mood("thinking", announce=False, escalate=(45, 180), persist=False)
+        elif mood:
+            self.set_mood(mood, announce=False, revert_after=revert, persist=False)
+        if event == "attention":
+            self.hop()
+        lines = REACT_LINES.get(event)
+        if text or (lines and not quiet):
+            self.say(text or random.choice(lines))
 
     # -- speech, feeding ---------------------------------------------------------------
     def say(self, text=None, duration=None):
@@ -667,6 +1012,10 @@ class Mascot(Gtk.Window):
         self.bubble.show_text(text, ACCENTS[self.mood], ax, top, bottom,
                               self.workarea_at((ax, top)), duration)
         return text
+
+    def hop(self):
+        self.hop_started = time.monotonic()
+        self._schedule(fast=True)
 
     def feed(self):
         line = FEED_LINES[self._feed_index % len(FEED_LINES)]
@@ -689,6 +1038,7 @@ class Mascot(Gtk.Window):
                 "life": 0.9,
             })
         self._schedule(fast=True)
+        return line
 
     # -- pointer --------------------------------------------------------------------------
     def _on_press(self, _widget, event):
@@ -702,7 +1052,10 @@ class Mascot(Gtk.Window):
             return True
         if event.button != 1:
             return False
+        if self.sleeping:
+            self.wake()
         self.inertia = None
+        self.falling = None
         self.drag = {
             "start": (event.x_root, event.y_root),
             "origin": self.pos,
@@ -728,6 +1081,7 @@ class Mascot(Gtk.Window):
             self.input_shape_combine_region(None)
             self._shown_region_key = None
         if drag["moved"]:
+            self.perch = None
             point = (event.x_root, event.y_root)
             self.pos = self.clamp(drag["origin"][0] + dx, drag["origin"][1] + dy, point)
             self.apply_position()
@@ -756,7 +1110,7 @@ class Mascot(Gtk.Window):
         vx, vy = drag["v"][0] * damping, drag["v"][1] * damping
         if math.hypot(vx, vy) > 0.08:
             self.inertia = [max(-1.7, min(1.7, vx)), max(-1.7, min(1.7, vy)), time.monotonic()]
-        else:
+        elif not self.try_perch():
             self._save_position()
         self._schedule(fast=True)
         return True
@@ -786,15 +1140,28 @@ class Mascot(Gtk.Window):
             self.inertia = [vx, vy, now]
         else:
             self.inertia = None
-            self._save_position()
+            if not self.try_perch():
+                self._save_position()
 
     def _save_position(self):
         self.config["x"], self.config["y"] = round(self.pos[0]), round(self.pos[1])
         self.config.save()
 
+    def move_to(self, x, y):
+        """Place her sprite's top-left at (x, y), then perch if she lands on a window top."""
+        self.inertia = None
+        self.falling = None
+        self.perch = None
+        self.pos = self.clamp(float(x), float(y))
+        self.apply_position()
+        if not self.try_perch():
+            self._save_position()
+
     def reset_position(self):
         wa = self.workarea_at(None)
         self.inertia = None
+        self.perch = None
+        self.falling = None
         self.pos = self.clamp(wa.x + wa.width - self.frames.width - 26,
                               wa.y + wa.height - self.frames.height - 18)
         self.apply_position()
@@ -812,15 +1179,86 @@ class Mascot(Gtk.Window):
         self.start_clock()
 
 
+class ControlServer:
+    """Line-based JSON control socket (see protocol.py) on the GTK main loop."""
+
+    def __init__(self, path, handler):
+        self.path = Path(path)
+        self.handler = handler
+        self.service = None
+        self._clients = set()
+
+    def start(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if self.path.exists() or self.path.is_symlink():
+            self.path.unlink()  # stale: Gtk.Application already guarantees one instance
+        self.service = Gio.SocketService()
+        self.service.add_address(Gio.UnixSocketAddress.new(str(self.path)),
+                                 Gio.SocketType.STREAM, Gio.SocketProtocol.DEFAULT, None)
+        os.chmod(self.path, 0o600)
+        self.service.connect("incoming", self._on_incoming)
+        self.service.start()
+
+    def stop(self):
+        if self.service:
+            self.service.stop()
+            self.service.close()
+            self.service = None
+        try:
+            self.path.unlink()
+        except OSError:
+            pass
+
+    def _on_incoming(self, _service, connection, _source):
+        reader = Gio.DataInputStream.new(connection.get_input_stream())
+        client = (connection, reader)
+        self._clients.add(client)
+        reader.read_line_async(GLib.PRIORITY_DEFAULT, None, self._on_line, client)
+        return True
+
+    def _on_line(self, reader, result, client):
+        connection = client[0]
+        try:
+            line, _length = reader.read_line_finish_utf8(result)
+        except GLib.Error:
+            line = None
+        if line is None:
+            self._clients.discard(client)
+            connection.close(None)
+            return
+        line = line.strip()
+        if line:
+            try:
+                request = json.loads(line) if line.startswith("{") else parse_plain(line)
+                reply = self.handler(request if isinstance(request, dict) else {})
+            except Exception as exc:  # noqa: BLE001
+                reply = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            data = (json.dumps(reply) + "\n").encode()
+            try:
+                connection.get_output_stream().write_all(data, None)
+            except GLib.Error:
+                pass
+        reader.read_line_async(GLib.PRIORITY_DEFAULT, None, self._on_line, client)
+
+
 class WhaleApp(Gtk.Application):
     def __init__(self, args):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.FLAGS_NONE)
         self.args = args
         self.config = Config(CONFIG_PATH)
         self.mascot = None
+        self.control = None
+        self._recent_keys = {}
         self.status_icon = None
         self._baking = False
         self._hide_timer = None
+        self.x11 = None
+        self.user_hidden = False
+        self.auto_hidden = False      # hidden because a fullscreen app is active
+        self._last_comment = 0.0
+        self._rule_times = {}
+        self._last_active = None
+        self._no_sleep_until = 0.0
 
     # -- lifecycle ----------------------------------------------------------------
     def do_activate(self):
@@ -834,6 +1272,12 @@ class WhaleApp(Gtk.Application):
         self.hold()
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, self._quit_signal)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self._quit_signal)
+        self.control = ControlServer(socket_path(), self.handle_request)
+        try:
+            self.control.start()
+        except GLib.Error as exc:
+            print(f"whalechan: control socket unavailable: {exc.message}", file=sys.stderr)
+            self.control = None
         self.bake_then(int(self.config["size"]), self._first_frames)
 
     def _quit_signal(self):
@@ -849,8 +1293,112 @@ class WhaleApp(Gtk.Application):
             self.mascot.set_mood(self.mascot.mood, announce=False)
         self._setup_status_icon(frames)
         GLib.timeout_add(900, lambda: self.mascot.say(GREETING, 7200) and False)
+        if X11Watch is not None:
+            try:
+                self.x11 = X11Watch(on_windows=self._on_windows, on_active=self._on_active,
+                                    on_desktop=self._on_desktop)
+            except Exception as exc:  # noqa: BLE001
+                print(f"whalechan: desktop awareness disabled: {exc}", file=sys.stderr)
+        GLib.timeout_add(100, self._poll_pointer)
+        GLib.timeout_add(1000, self._poll_idle)
+        if self.x11:
+            self._last_active = self._active_key(self.x11.active())
+            self._on_active(self.x11.active(), comment=False)
+
+    # -- desktop awareness --------------------------------------------------------------
+    def _poll_pointer(self):
+        m = self.mascot
+        if m is None:
+            return False
+        if m.get_visible() and (self.config["follow"] or m.gaze):
+            pointer = Gdk.Display.get_default().get_default_seat().get_pointer()
+            _screen, x, y = pointer.get_position()
+            m.update_gaze(x, y)
+        return True
+
+    def _poll_idle(self):
+        m = self.mascot
+        if m is None:
+            return False
+        idle = self.x11.idle_ms() if self.x11 else None
+        if idle is None:
+            return True
+        now = time.monotonic()
+        if m.sleeping and idle < 2000:
+            m.wake()
+            self._no_sleep_until = now + 30
+        elif (self.config["sleep"] and not m.sleeping and m.get_visible() and m.mood == "neutral"
+              and not m.drag and not m.falling and now >= self._no_sleep_until
+              and idle >= float(self.config["sleep_after"]) * 1000):
+            m.sleep()
+        return True
+
+    def _on_windows(self):
+        if self.mascot:
+            self.mascot.on_windows_changed()
+
+    def _on_desktop(self, old, new):
+        m = self.mascot
+        if m and m.get_visible():
+            m.swim_in(new - old)
+
+    @staticmethod
+    def _active_key(info):
+        return (info["class"], info["title"]) if info else None
+
+    def _on_active(self, info, comment=True):
+        m = self.mascot
+        if m is None:
+            return
+        # Fullscreen apps on her monitor (videos, games, presentations) hide her.
+        monitor = Gdk.Display.get_default().get_monitor_at_point(
+            int(m.pos[0] + m.frames.width / 2), int(m.pos[1] + m.frames.height / 2)).get_geometry()
+        fullscreen = False
+        if info and info["fullscreen"] and self.config["fullscreen_hide"]:
+            x, y, w, h = info["rect"]
+            fullscreen = (x < monitor.x + monitor.width and monitor.x < x + w
+                          and y < monitor.y + monitor.height and monitor.y < y + h)
+        if fullscreen and not self.auto_hidden:
+            self.auto_hidden = True
+            if m.get_visible():
+                m.hide_all()
+        elif not fullscreen and self.auto_hidden:
+            self.auto_hidden = False
+            if not self.user_hidden:
+                m.show_all_again()
+        key = self._active_key(info)
+        if comment and key != self._last_active:
+            self._last_active = key
+            self._comment_on(info)
+
+    def _comment_on(self, info):
+        m = self.mascot
+        now = time.monotonic()
+        if (not info or not self.config["comments"] or not m.get_visible() or m.sleeping
+                or m.drag or m.mood != "neutral" or m.bubble.get_visible()
+                or now - self._last_comment < APP_COMMENT_COOLDOWN):
+            return
+        app = f"{info['instance']} {info['class']}".lower()
+        title = info["title"].lower()
+        for index, (field, pattern, mood, lines) in enumerate(APP_RULES):
+            if not re.search(pattern, title if field == "title" else app):
+                continue
+            if now - self._rule_times.get(index, -1e9) < APP_RULE_COOLDOWN:
+                return
+            self._rule_times[index] = now
+            self._last_comment = now
+            if mood:
+                m.set_mood(mood, announce=False, escalate=None, revert_after=6)
+            m.say(random.choice(lines))
+            return
 
     def quit_app(self, *_args):
+        if self.x11:
+            self.x11.close()
+            self.x11 = None
+        if self.control:
+            self.control.stop()
+            self.control = None
         if self.mascot:
             self.mascot._save_position()
             self.mascot.bubble.destroy()
@@ -903,6 +1451,98 @@ class WhaleApp(Gtk.Application):
                 self.quit()
 
         stream.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
+
+    # -- remote control ------------------------------------------------------------
+    def handle_request(self, req):
+        cmd = str(req.get("cmd", "")).lower()
+        m = self.mascot
+        key = req.get("key")
+        if key:
+            # Several senders (e.g. one OpenCode plugin instance per location) may
+            # report the same event; act on the first and drop repeats briefly.
+            now = time.monotonic()
+            self._recent_keys = {k: t for k, t in self._recent_keys.items() if now - t < 3}
+            if key in self._recent_keys:
+                return {"ok": True, "duplicate": True}
+            self._recent_keys[key] = now
+        if cmd == "ping":
+            return {"ok": True, "ready": m is not None}
+        if cmd == "quit":
+            GLib.idle_add(self.quit_app)
+            return {"ok": True}
+        if m is None:
+            return {"ok": False, "error": "Whale-chan is still baking her frames, try again shortly"}
+        visible = m.get_visible()
+        revert = float(req["for"]) if req.get("for") else None
+
+        if cmd == "status":
+            return {"ok": True, "ready": True, "pid": os.getpid(), "mood": m.mood, "state": m.state,
+                    "visible": visible, "x": round(m.pos[0]), "y": round(m.pos[1]),
+                    "size": int(self.config["size"]), "opacity": self.config["opacity"],
+                    "glow": bool(self.config["glow"]), "sleeping": m.sleeping,
+                    "perched": bool(m.perch), "gaze": m.gaze,
+                    "hidden_for_fullscreen": self.auto_hidden,
+                    "desktop_awareness": self.x11 is not None}
+        if cmd == "say":
+            if req.get("mood"):
+                if req["mood"] not in MOODS:
+                    return {"ok": False, "error": f"unknown mood {req['mood']!r}"}
+                m.set_mood(req["mood"], announce=False, revert_after=revert)
+            duration = req.get("duration")
+            text = m.say(str(req.get("text") or "") or None,
+                         int(float(duration) * 1000) if duration else None)
+            return {"ok": True, "text": text, "visible": visible}
+        if cmd == "mood":
+            mood = str(req.get("mood", "neutral")).lower()
+            if mood not in MOODS:
+                return {"ok": False, "error": f"unknown mood {mood!r}; choose from {', '.join(MOODS)}"}
+            strain = req.get("strain")
+            m.set_mood(mood, announce=bool(req.get("announce")),
+                       strain=int(strain) if strain is not None else 0,
+                       escalate=None if strain is not None else (2.8, 6.8),
+                       revert_after=revert)
+            if req.get("text"):
+                m.say(str(req["text"]))
+            return {"ok": True, "mood": mood}
+        if cmd == "react":
+            event = normalize_event(req.get("event"))
+            if event not in EVENTS:
+                return {"ok": False, "error": f"unknown event {req.get('event')!r}; "
+                                              f"choose from {', '.join(EVENTS)}"}
+            m.react(event, str(req.get("text") or "") or None, quiet=bool(req.get("quiet")))
+            return {"ok": True, "event": event, "mood": m.mood, "visible": visible}
+        if cmd == "feed":
+            return {"ok": True, "text": m.feed()}
+        if cmd == "show":
+            if not visible:
+                self.show_mascot()
+            return {"ok": True}
+        if cmd == "hide":
+            self.hide_mascot(None)
+            return {"ok": True}
+        if cmd == "toggle":
+            self.toggle_mascot()
+            return {"ok": True, "visible": m.get_visible()}
+        if cmd == "sleep":
+            if m.mood != "neutral":
+                m.set_mood("neutral", announce=False)
+            m.sleep()
+            self._no_sleep_until = 0
+            return {"ok": True, "sleeping": m.sleeping}
+        if cmd == "wake":
+            m.wake()
+            self._no_sleep_until = time.monotonic() + float(self.config["sleep_after"])
+            return {"ok": True}
+        if cmd == "move":
+            try:
+                m.move_to(float(req["x"]), float(req["y"]))
+            except (KeyError, TypeError, ValueError):
+                return {"ok": False, "error": "move needs numeric x and y"}
+            return {"ok": True, "x": round(m.pos[0]), "y": round(m.pos[1]), "perched": bool(m.perch)}
+        if cmd == "home":
+            m.reset_position()
+            return {"ok": True}
+        return {"ok": False, "error": f"unknown command {cmd!r}"}
 
     # -- menu ------------------------------------------------------------------------------
     def build_menu(self):
@@ -960,6 +1600,17 @@ class WhaleApp(Gtk.Application):
         glow.connect("toggled", lambda w: self.set_glow(w.get_active()))
         menu.append(glow)
 
+        behaviour = submenu("Behaviour")
+        for key, label in [("follow", "Follow the cursor with my eyes"),
+                           ("perch", "Stand on windows"),
+                           ("comments", "Comment on apps"),
+                           ("sleep", "Nap when you're away"),
+                           ("fullscreen_hide", "Hide for fullscreen apps")]:
+            check = Gtk.CheckMenuItem.new_with_label(label)
+            check.set_active(bool(self.config[key]))
+            check.connect("toggled", lambda w, key=key: self.set_behaviour(key, w.get_active()))
+            behaviour.append(check)
+
         menu.append(Gtk.SeparatorMenuItem())
         item("Back to the corner", m.reset_position)
         if m.get_visible():
@@ -998,12 +1649,24 @@ class WhaleApp(Gtk.Application):
         self.config.save()
         self.mascot.queue_draw()
 
+    def set_behaviour(self, key, on):
+        self.config[key] = bool(on)
+        self.config.save()
+        m = self.mascot
+        if key == "perch" and not on:
+            m.perch = None
+        elif key == "sleep" and not on:
+            m.wake(announce=False)
+        elif key == "fullscreen_hide" and self.x11:
+            self._on_active(self.x11.active(), comment=False)
+
     def set_glow(self, on):
         self.config["glow"] = bool(on)
         self.config.save()
         self.mascot.queue_draw()
 
     def hide_mascot(self, seconds):
+        self.user_hidden = True
         self.mascot.hide_all()
         if self._hide_timer:
             GLib.source_remove(self._hide_timer)
@@ -1020,6 +1683,8 @@ class WhaleApp(Gtk.Application):
         if self._hide_timer:
             GLib.source_remove(self._hide_timer)
             self._hide_timer = None
+        self.user_hidden = False
+        self.auto_hidden = False
         self.mascot.show_all_again()
 
     def toggle_mascot(self):

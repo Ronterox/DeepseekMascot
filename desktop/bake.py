@@ -7,7 +7,12 @@ retimes every idle loop so they all share one period (seamless loops), steps the
 animation clock frame by frame and snapshots the result. The desktop app then
 only plays images back.
 
-Usage: python3 desktop/bake.py [--svg PATH] [--width 260] [--fps 20] [--out DIR]
+Besides the six moods it bakes variants of `neutral` with CSS-variable
+overrides: gaze directions (same loop period as neutral, so the app can switch
+between them frame-for-frame) and a sleepy pose.
+
+Usage: python3 desktop/bake.py [--svg PATH] [--width 260] [--fps 20] [--cache DIR]
+       python3 desktop/bake.py --preview sheet.png [--states a,b] [--time MS]
 Progress is printed to stdout as "progress <done> <total>" lines.
 """
 
@@ -27,21 +32,51 @@ gi.require_version("WebKit2", "4.0")
 from gi.repository import Gdk, GLib, Gtk, WebKit2  # noqa: E402
 import cairo  # noqa: E402
 
-BAKE_VERSION = 2
+BAKE_VERSION = 3
 MASK_EVERY = 4      # sample every Nth frame for the click mask
 MASK_GROW = 3       # px of slack around the silhouette
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SVG = ROOT / "assets" / "whale-chan.svg"
+
+
+def state(name, mood, strain=0, vars=None, cls="", sync=None):
+    """A baked state: a mood plus optional CSS-variable overrides and an extra class.
+
+    `sync` names another state whose loop period this one must share, so the app
+    can swap between them at the same frame index (only the overrides differ).
+    """
+    return {"name": name, "mood": mood, "strain": strain, "vars": vars or {}, "cls": cls, "sync": sync}
+
+
+# Irises (--ix/--iy) and head (--hr/--hx/--hy) turned toward screen directions.
+GAZE = {
+    "look-l": {"--ix": "-10px", "--iy": "2px", "--hr": "-4deg", "--hx": "-3px"},
+    "look-r": {"--ix": "10px", "--iy": "2px", "--hr": "4deg", "--hx": "3px"},
+    "look-ul": {"--ix": "-8px", "--iy": "-11px", "--hr": "-3deg", "--hx": "-2px", "--hy": "-4px"},
+    "look-ur": {"--ix": "8px", "--iy": "-11px", "--hr": "3deg", "--hx": "2px", "--hy": "-4px"},
+}
+SLEEPY = {"--hr": "9deg", "--hx": "4px", "--hy": "9px", "--ahoge": "36deg", "--ear": "18deg",
+          "--tail": "14deg", "--blush": ".95"}
 STATES = [
-    ("neutral", "neutral", 0),
-    ("angry", "angry", 0),
-    ("smug", "smug", 0),
-    ("happy", "happy", 0),
-    ("sad", "sad", 0),
-    ("thinking", "thinking", 0),
-    ("thinking-1", "thinking", 1),
-    ("thinking-2", "thinking", 2),
+    state("neutral", "neutral"),
+    state("angry", "angry"),
+    state("smug", "smug"),
+    state("happy", "happy"),
+    state("sad", "sad"),
+    state("thinking", "thinking"),
+    state("thinking-1", "thinking", 1),
+    state("thinking-2", "thinking", 2),
+    *[state(f"neutral-{name}", "neutral", vars=v, sync="neutral") for name, v in GAZE.items()],
+    state("sleepy", "neutral", vars=SLEEPY, cls="st-sleepy"),
 ]
+# Extra rules for states that need more than variables.
+STATE_CSS = """
+.st-sleepy .eye-open { opacity: 0 !important; }
+.st-sleepy .eye-happy {
+  opacity: 1 !important; transform-box: fill-box; transform-origin: 50% 50%;
+  transform: translateY(4px) scaleY(-0.7);
+}
+"""
 VIEWBOX = (900, 1060)
 # Room around the art box for effects that overflow the viewBox (thought
 # bubbles, hearts, steam). Everything is auto-cropped afterwards.
@@ -58,9 +93,13 @@ PAGE_JS = r"""
     }
   };
   window.bake = {
-    setState(mood, strain) {
+    setState(mood, strain, vars, cls) {
       svg.setAttribute('data-mood', mood);
       svg.setAttribute('data-strain', String(strain));
+      svg.removeAttribute('style');
+      for (const [k, v] of Object.entries(vars || {})) svg.style.setProperty(k, v);
+      for (const c of [...svg.classList]) if (c.startsWith('st-')) svg.classList.remove(c);
+      if (cls) svg.classList.add(cls);
       settle();
       settle();
       return anims().length;
@@ -134,8 +173,12 @@ def choose_period(durations_ms, lo=4800, hi=8000, step=100):
 
 
 class Baker:
-    def __init__(self, svg_path, width, fps, out_dir):
+    def __init__(self, svg_path, width, fps, out_dir, states=None, preview=None, preview_ms=0):
         self.svg_path = Path(svg_path)
+        self.states = states or STATES
+        self.preview = preview
+        self.preview_ms = preview_ms
+        self.previews = []
         self.width = width
         self.fps = fps
         self.out_dir = Path(out_dir)
@@ -184,6 +227,11 @@ class Baker:
             done,
         )
 
+    @staticmethod
+    def _set_state_js(st):
+        return (f"bake.setState({json.dumps(st['mood'])}, {st['strain']}, "
+                f"{json.dumps(st['vars'])}, {json.dumps(st['cls'])})")
+
     def _fail(self, message):
         self.error = message
         self.loop.quit()
@@ -199,11 +247,13 @@ html, body {{ margin: 0; background: transparent; overflow: hidden; }}
   width: {self.art_w}px; height: {self.art_h}px; }}
 #stage svg {{ display: block; width: 100%; height: 100%; overflow: visible; }}
 .no-fx .fx, .no-fx .bowl-steam {{ visibility: hidden !important; }}
+{STATE_CSS}
 </style></head><body><div id="stage">{svg}</div></body></html>"""
 
-        if self.tmp_dir.exists():
-            shutil.rmtree(self.tmp_dir)
-        self.tmp_dir.mkdir(parents=True)
+        if not self.preview:
+            if self.tmp_dir.exists():
+                shutil.rmtree(self.tmp_dir)
+            self.tmp_dir.mkdir(parents=True)
 
         self.window = Gtk.OffscreenWindow()
         self.window.set_default_size(self.view_w, self.view_h)
@@ -220,7 +270,8 @@ html, body {{ margin: 0; background: transparent; overflow: hidden; }}
         self.loop.run()
         self.window.destroy()
         if self.error:
-            shutil.rmtree(self.tmp_dir, ignore_errors=True)
+            if not self.preview:
+                shutil.rmtree(self.tmp_dir, ignore_errors=True)
             raise RuntimeError(self.error)
 
     def _on_load(self, view, event):
@@ -229,42 +280,69 @@ html, body {{ margin: 0; background: transparent; overflow: hidden; }}
         self._js(PAGE_JS + ";1", lambda _v: self._collect_durations(0, {}))
 
     def _collect_durations(self, index, plan):
-        if index == len(STATES):
+        if index == len(self.states):
+            for st in self.states:
+                if st["sync"] in plan:
+                    plan[st["name"]] = dict(plan[st["sync"]])
             self.plan = plan
             self.total = sum(item["frames"] for item in plan.values())
             self.done = 0
             self._start_state(0)
             return
-        name, mood, strain = STATES[index]
+        st = self.states[index]
 
         def got(value):
             durations = sorted({round(float(x), 3) for x in json.loads(value.to_string())})
             frames = max(1, round(choose_period(durations) / 1000 * self.fps))
-            plan[name] = {"frames": frames, "period_ms": frames * 1000 / self.fps}
+            plan[st["name"]] = {"frames": frames, "period_ms": frames * 1000 / self.fps}
             self._collect_durations(index + 1, plan)
 
-        self._js(
-            f"bake.setState('{mood}', {strain}); JSON.stringify(bake.durations())",
-            got,
-        )
+        self._js(f"{self._set_state_js(st)}; JSON.stringify(bake.durations())", got)
 
     def _start_state(self, index):
-        if index == len(STATES):
-            GLib.idle_add(self._finish)
+        if index == len(self.states):
+            GLib.idle_add(self._finish_preview if self.preview else self._finish)
             return
-        name, mood, strain = STATES[index]
-        (self.tmp_dir / name).mkdir()
-        self._js(
-            f"bake.setState('{mood}', {strain}); "
-            f"bake.retime({self.plan[name]['period_ms']}); 1",
-            lambda _v: self._frame(index, 0),
-        )
+        st = self.states[index]
+        if self.preview:
+            self._js(f"{self._set_state_js(st)}; bake.retime({self.plan[st['name']]['period_ms']}); "
+                     f"bake.seek({self.preview_ms}); 1",
+                     lambda _v: self._snapshot(lambda surface: self._preview_shot(index, surface)))
+            return
+        (self.tmp_dir / st["name"]).mkdir()
+        self._js(f"{self._set_state_js(st)}; bake.retime({self.plan[st['name']]['period_ms']}); 1",
+                 lambda _v: self._frame(index, 0))
+
+    def _preview_shot(self, index, surface):
+        self.previews.append((self.states[index]["name"], surface))
+        self._start_state(index + 1)
+
+    def _finish_preview(self):
+        cols = min(4, len(self.previews))
+        rows = (len(self.previews) + cols - 1) // cols
+        label_h = 22
+        sheet = cairo.ImageSurface(cairo.FORMAT_ARGB32, cols * self.view_w, rows * (self.view_h + label_h))
+        cr = cairo.Context(sheet)
+        cr.set_source_rgb(0.47, 0.66, 0.53)
+        cr.paint()
+        for i, (name, surface) in enumerate(self.previews):
+            x, y = (i % cols) * self.view_w, (i // cols) * (self.view_h + label_h)
+            cr.set_source_surface(surface, x, y + label_h)
+            cr.paint()
+            cr.set_source_rgb(0.08, 0.15, 0.3)
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+            cr.set_font_size(14)
+            cr.move_to(x + 8, y + 16)
+            cr.show_text(name)
+        sheet.write_to_png(str(self.preview))
+        self.loop.quit()
+        return False
 
     def _frame(self, state_index, frame):
-        if frame == self.plan[STATES[state_index][0]]["frames"]:
+        name = self.states[state_index]["name"]
+        if frame == self.plan[name]["frames"]:
             self._start_state(state_index + 1)
             return
-        name = STATES[state_index][0]
         ms = frame * 1000 / self.fps
 
         def shot(surface):
@@ -302,8 +380,8 @@ html, body {{ margin: 0; background: transparent; overflow: hidden; }}
         x0, y0 = max(0, x0 - margin), max(0, y0 - margin)
         x1, y1 = min(self.view_w, x1 + margin), min(self.view_h, y1 + margin)
         cw, ch = x1 - x0, y1 - y0
-        for name, _mood, _strain in STATES:
-            src_dir = self.tmp_dir / name
+        for st in self.states:
+            src_dir = self.tmp_dir / st["name"]
             for png in sorted(src_dir.glob("*.png")):
                 src = cairo.ImageSurface.create_from_png(str(png))
                 dst = cairo.ImageSurface(cairo.FORMAT_ARGB32, cw, ch)
@@ -367,7 +445,25 @@ def bake(svg_path, width, fps, cache_dir=None):
         return out
     out.parent.mkdir(parents=True, exist_ok=True)
     Baker(svg_path, width, fps, out).run()
+    _prune(out, svg_path, width, fps)
     return out
+
+
+def _prune(keep, svg_path, width, fps):
+    """Delete older bakes of the same SVG, size and fps (they can never be hit again)."""
+    for sibling in keep.parent.iterdir():
+        if sibling == keep or not sibling.is_dir():
+            continue
+        try:
+            manifest = json.loads((sibling / "manifest.json").read_text())
+        except (OSError, ValueError):
+            if sibling.name.endswith(".tmp"):
+                continue  # possibly another bake in progress
+            manifest = None
+        if manifest is None or (manifest.get("svg") == str(svg_path)
+                                and manifest.get("art", {}).get("w") == width
+                                and manifest.get("fps") == fps):
+            shutil.rmtree(sibling, ignore_errors=True)
 
 
 def main():
@@ -376,8 +472,21 @@ def main():
     parser.add_argument("--width", type=int, default=260, help="art width in pixels")
     parser.add_argument("--fps", type=int, default=20)
     parser.add_argument("--cache", default=None, help="cache root directory")
+    parser.add_argument("--preview", metavar="PNG",
+                        help="render one frame per state into a contact sheet instead of baking")
+    parser.add_argument("--states", help="comma-separated state names for --preview")
+    parser.add_argument("--time", type=float, default=0, help="--preview: animation time in ms")
     args = parser.parse_args()
     try:
+        if args.preview:
+            states = STATES
+            if args.states:
+                wanted = args.states.split(",")
+                states = [st for st in STATES if st["name"] in wanted]
+            Baker(args.svg, args.width, args.fps, Path("/nonexistent"), states=states,
+                  preview=Path(args.preview), preview_ms=args.time).run()
+            print(f"done {args.preview}", flush=True)
+            return 0
         out = bake(args.svg, args.width, args.fps, args.cache)
     except Exception as exc:  # noqa: BLE001
         print(f"error {exc}", file=sys.stderr, flush=True)

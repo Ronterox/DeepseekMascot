@@ -44,7 +44,7 @@ On Debian/Ubuntu: `sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4
 | Drag | Pick her up; release to throw her with momentum |
 | Left click | She says a line |
 | Middle click | Feed her rice |
-| Right click | Menu: say, feed, mood, size, opacity, glow, hide, quit |
+| Right click | Menu: say, feed, mood, size, opacity, glow, behaviour toggles, hide, quit |
 | Tray icon | Left click shows/hides her; right click opens the same menu |
 
 How it works:
@@ -68,6 +68,93 @@ How it works:
   `~/.config/whalechan/config.json`. Launching it again while it is running just
   wakes the existing instance.
 
+### Desktop awareness
+
+[`desktop/x11watch.py`](desktop/x11watch.py) watches the X11 desktop (window
+stack, active window, workspaces, and input idle time via libXss). Each behaviour
+can be toggled from **right-click → Behaviour**:
+
+| Behaviour | What she does |
+| --- | --- |
+| Follow the cursor | In the neutral mood her eyes and head glance toward the pointer (left, right, up-left, up-right). She looks ahead again once it has been still for 6 s. |
+| Stand on windows | Drop her near a window's top edge and she stands on it, riding along when you move the window. When it closes, minimizes, maximizes or leaves the workspace, she falls to the next window below or to the floor. |
+| Comment on apps | Switching to some apps or tabs (YouTube, other AIs, code editors, terminals, Blender/Godot/Krita…) gets a remark. At most one every 3 min, and the same remark at most every 20 min. Only in the neutral mood. |
+| Nap when you're away | After 4 min without input (`sleep_after` in the config) she dozes off with closed eyes and drifting z's, at half frame rate. Any input, or a click on her, wakes her. |
+| Hide for fullscreen apps | Off by default. When on, she disappears while the active window is fullscreen on her monitor (videos, games, slides) and comes back afterwards. |
+
+Switching workspaces makes her glide in. Gaze and sleep are baked as extra states
+(`neutral-look-*`, `sleepy`) from CSS-variable overrides. Gaze states share
+neutral's loop period, so swapping them mid-loop only moves her eyes and head.
+`python3 desktop/bake.py --preview sheet.png` renders one frame of every state into
+a contact sheet, handy when tweaking the art.
+
+### Control her from scripts
+
+[`desktop/whalechan`](desktop/whalechan) is a small CLI with no GTK imports, so it
+returns instantly. Symlink it onto your `PATH` if you like:
+`ln -s "$PWD/desktop/whalechan" ~/.local/bin/whalechan`.
+
+```bash
+whalechan start                          # launch in the background (no-op if running)
+whalechan say "Build passed" -m happy --for 8
+whalechan mood thinking                  # neutral angry smug happy sad thinking
+whalechan mood thinking --strain 0       # hold a strain level instead of escalating
+whalechan react success                  # working success failure error attention idle
+whalechan react fail "3 tests broke"     # aliases: start done pass fail crash waiting …
+whalechan run -- make test               # thinks while it runs, then cheers or sulks
+whalechan move 600 300                   # place her; she perches if that's on a window top
+whalechan sleep | wake
+whalechan feed | show | hide | toggle | home | status | quit
+```
+
+- `react working` holds the thinking pose and only spirals into overthinking
+  after 45 s and 3 min; `success`/`failure`/`error` return to neutral after
+  8–10 s; `attention` makes her hop.
+- `react --quiet-line` changes mood without a speech bubble; `--key ID` drops
+  repeats of the same key within 3 s (for senders that report events twice).
+- `run` passes the command's exit code through, so it can wrap anything.
+- If she isn't running, commands exit with status 3; add `-q` to exit 0 silently
+  (useful in hooks).
+
+Under the hood she listens on `$XDG_RUNTIME_DIR/whalechan.sock` (mode 600). Send
+one request per line, as JSON or plain text, and get one JSON reply per line:
+
+```bash
+echo '{"cmd": "say", "text": "Hi", "mood": "happy"}' | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/whalechan.sock
+echo 'react error Who broke the build?!'           | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/whalechan.sock
+```
+
+Git hook example (`.git/hooks/post-commit`):
+
+```sh
+#!/bin/sh
+whalechan -q react success "Committed $(git log -1 --format=%h). Neat."
+```
+
+### Coding-agent reactions
+
+**OpenCode.** [`integrations/opencode/whalechan`](integrations/opencode/whalechan/index.ts)
+is a server plugin: she thinks while a session works, cheers with the session
+title when a turn succeeds, gets angry when it fails, and hops when OpenCode asks
+for permission or has a question. Subagent sessions are ignored. Install it
+globally with a symlink (OpenCode loads `~/.config/opencode/plugins/` automatically):
+
+```bash
+ln -s "$PWD/integrations/opencode/whalechan" ~/.config/opencode/plugins/whalechan
+```
+
+**Claude Code.** Add hooks to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "whalechan -q react working --quiet-line" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "whalechan -q react success" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "whalechan -q react attention" }] }]
+  }
+}
+```
+
 Bake by hand, e.g. for another SVG with the same rig contract (`data-mood`,
 `data-strain`, `.fx` effect layers):
 
@@ -86,8 +173,13 @@ python3 desktop/whalechan.py --svg path/to/mascot.svg
 │   ├── mascot.js           <deepseek-mascot> custom element
 │   └── demo.js             demo controls + telemetry wiring
 ├── desktop/
-│   ├── whalechan.py        X11 desktop mascot (GTK + cairo)
+│   ├── whalechan.py        X11 desktop mascot (GTK + cairo) + control socket
+│   ├── whalechan           CLI: say, mood, react, run, …
+│   ├── protocol.py         socket protocol shared by both
+│   ├── x11watch.py         windows, active app, workspaces, idle time
 │   └── bake.py             bakes the SVG rig into looping frames + click masks
+├── integrations/
+│   └── opencode/whalechan  OpenCode plugin: reacts to agent sessions
 ├── assets/
 │   ├── whale-chan.svg      standalone rigged + animated vector SVG
 │   └── preview.webp        README preview

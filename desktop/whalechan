@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""Control the Whale-chan desktop mascot from scripts, hooks and terminals.
+
+  whalechan start                      launch her (no-op if already running)
+  whalechan say "Build passed" -m happy
+  whalechan mood thinking              moods: neutral angry smug happy sad thinking
+  whalechan react success              events: working success failure error attention idle
+  whalechan run -- make test           thinking while it runs, then happy or sad
+  whalechan feed | show | hide | toggle | home | sleep | wake | status | quit
+
+Exit codes: 0 ok, 1 rejected request, 3 not running (0 with --quiet).
+"""
+
+import argparse
+import json
+import os
+import shlex
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from protocol import EVENTS, EVENT_ALIASES, MOODS, socket_path  # noqa: E402
+
+NOT_RUNNING = 3
+
+
+class NotRunning(Exception):
+    pass
+
+
+def request(payload, timeout=3.0):
+    path = socket_path()
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        sock.connect(str(path))
+    except (FileNotFoundError, ConnectionRefusedError) as exc:
+        raise NotRunning() from exc
+    with sock:
+        sock.sendall((json.dumps(payload) + "\n").encode())
+        data = b""
+        while not data.endswith(b"\n"):
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    return json.loads(data.decode() or '{"ok": false, "error": "empty reply"}')
+
+
+def try_request(payload):
+    try:
+        return request(payload)
+    except (NotRunning, OSError, ValueError):
+        return None
+
+
+def log_path():
+    base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "whalechan"
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "whalechan.log"
+
+
+def start(extra_args, wait=8.0):
+    if try_request({"cmd": "ping"}):
+        print("Whale-chan is already running.")
+        return 0
+    log = open(log_path(), "ab")
+    subprocess.Popen([sys.executable, str(HERE / "whalechan.py"), *extra_args],
+                     stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                     start_new_session=True, close_fds=True)
+    deadline = time.monotonic() + wait
+    up_since = None
+    while time.monotonic() < deadline:
+        reply = try_request({"cmd": "ping"})
+        if reply and reply.get("ready"):
+            return 0
+        if reply:
+            up_since = up_since or time.monotonic()
+            if time.monotonic() - up_since > 2.5:
+                print("Whale-chan is baking her frames first (about a minute).")
+                return 0
+        time.sleep(0.15)
+    print(f"Whale-chan did not come up; see {log_path()}", file=sys.stderr)
+    return 1
+
+
+def human_seconds(seconds):
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, secs = divmod(int(round(seconds)), 60)
+    return f"{minutes}m {secs:02d}s" if minutes < 60 else f"{minutes // 60}h {minutes % 60:02d}m"
+
+
+def run_command(argv, quiet_lines):
+    """Run a command with Whale-chan reacting to it, and return its exit code."""
+    if argv and argv[0] == "--":
+        argv = argv[1:]
+    if not argv:
+        print("whalechan run: give a command, e.g. whalechan run -- make test", file=sys.stderr)
+        return 2
+    label = " ".join(shlex.quote(a) for a in argv)
+    if len(label) > 48:
+        label = label[:47] + "…"
+    alive = try_request({"cmd": "react", "event": "working",
+                         "text": None if quiet_lines else f"Running {label}…"}) is not None
+    started = time.monotonic()
+    try:
+        code = subprocess.call(argv)
+    except FileNotFoundError:
+        code = 127
+        print(f"whalechan run: command not found: {argv[0]}", file=sys.stderr)
+    except KeyboardInterrupt:
+        code = 130
+    took = human_seconds(time.monotonic() - started)
+    if alive:
+        if code == 0:
+            event, text = "success", f"{label} passed in {took}."
+        elif code == 130:
+            event, text = "idle", f"{label} was interrupted. Fine, I'll stop thinking."
+        else:
+            event, text = "failure", f"{label} failed (exit {code}) after {took}."
+        try_request({"cmd": "react", "event": event, "text": None if quiet_lines else text})
+    return code
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="whalechan", description=__doc__.split("\n\n")[0],
+        epilog=__doc__.split("\n\n", 1)[1], formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("-q", "--quiet", action="store_true",
+                        help="if she isn't running, exit 0 without a message (for hooks)")
+    parser.add_argument("--json", action="store_true", help="print the raw JSON reply")
+    sub = parser.add_subparsers(dest="cmd", metavar="COMMAND")
+
+    p = sub.add_parser("start", help="launch the mascot in the background")
+    p.add_argument("--managed", action="store_true", help="use a managed utility window")
+    p.add_argument("--svg", help="rigged mascot SVG to bake")
+
+    p = sub.add_parser("say", help="show a speech bubble")
+    p.add_argument("text", nargs="*", help="what to say (random line if empty)")
+    p.add_argument("-m", "--mood", choices=MOODS, help="switch mood while saying it")
+    p.add_argument("-d", "--duration", type=float, help="seconds to keep the bubble up")
+    p.add_argument("--for", dest="revert", type=float, metavar="SECONDS",
+                   help="with --mood: return to neutral after this many seconds")
+
+    p = sub.add_parser("mood", help="change mood")
+    p.add_argument("mood", choices=MOODS)
+    p.add_argument("text", nargs="*", help="optional line to say")
+    p.add_argument("--for", dest="revert", type=float, metavar="SECONDS",
+                   help="return to neutral after this many seconds")
+    p.add_argument("--strain", type=int, choices=[0, 1, 2],
+                   help="thinking only: hold this strain level instead of escalating")
+    p.add_argument("--announce", action="store_true", help="say her default line for the mood")
+
+    events = ", ".join(EVENTS)
+    aliases = ", ".join(f"{k}={v}" for k, v in sorted(EVENT_ALIASES.items()))
+    p = sub.add_parser("react", help="react to an event",
+                       description=f"Events: {events}. Aliases: {aliases}.")
+    p.add_argument("event")
+    p.add_argument("text", nargs="*", help="optional line (a fitting random line otherwise)")
+    p.add_argument("--quiet-line", dest="quiet_line", action="store_true",
+                   help="change mood only; say nothing unless TEXT is given")
+    p.add_argument("--key", help="de-duplication key: repeats within 3s are ignored")
+
+    p = sub.add_parser("run", help="run a command; she thinks while it runs, then cheers or sulks")
+    p.add_argument("--silent", action="store_true", help="react with moods only, no lines")
+    p.add_argument("command", nargs=argparse.REMAINDER)
+
+    p = sub.add_parser("move", help="place her at screen coordinates (she perches on a window top there)")
+    p.add_argument("x", type=float)
+    p.add_argument("y", type=float)
+
+    for name, help_text in [("feed", "feed her rice"), ("show", "show her"), ("hide", "hide her"),
+                            ("toggle", "show or hide her"), ("home", "move her back to the corner"),
+                            ("sleep", "send her to nap"), ("wake", "wake her up"),
+                            ("status", "print her current state"), ("ping", "check she's running"),
+                            ("quit", "close the mascot")]:
+        sub.add_parser(name, help=help_text)
+
+    args = parser.parse_args(argv)
+    if not args.cmd:
+        parser.print_help()
+        return 0
+
+    if args.cmd == "start":
+        extra = (["--managed"] if args.managed else []) + (["--svg", args.svg] if args.svg else [])
+        return start(extra)
+    if args.cmd == "run":
+        return run_command(args.command, args.silent)
+
+    payload = {"cmd": args.cmd}
+    if args.cmd == "say":
+        payload.update(text=" ".join(args.text), mood=args.mood, duration=args.duration, **{"for": args.revert})
+    elif args.cmd == "mood":
+        payload.update(mood=args.mood, text=" ".join(args.text), strain=args.strain,
+                       announce=args.announce, **{"for": args.revert})
+    elif args.cmd == "move":
+        payload.update(x=args.x, y=args.y)
+    elif args.cmd == "react":
+        payload.update(event=args.event, text=" ".join(args.text), quiet=args.quiet_line, key=args.key)
+    payload = {k: v for k, v in payload.items() if v is not None and v != "" and v is not False}
+
+    try:
+        reply = request(payload)
+    except NotRunning:
+        if args.quiet:
+            return 0
+        print("Whale-chan isn't running. Start her with: whalechan start", file=sys.stderr)
+        return NOT_RUNNING
+    except (OSError, ValueError) as exc:
+        print(f"whalechan: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json or args.cmd == "status":
+        print(json.dumps(reply, indent=None if args.json else 2))
+    elif not reply.get("ok"):
+        print(f"whalechan: {reply.get('error', 'request failed')}", file=sys.stderr)
+    elif args.cmd == "ping":
+        print("pong" if reply.get("ready") else "starting")
+    return 0 if reply.get("ok") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
