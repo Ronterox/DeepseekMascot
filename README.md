@@ -27,6 +27,55 @@ python3 -m http.server 4173
 
 Any static server works — for example `npx serve .` or `php -S localhost:4173`.
 
+## Desktop mascot (Linux, X11)
+
+Whale-chan can also live on your desktop as a floating, transparent window:
+
+```bash
+python3 desktop/whalechan.py
+```
+
+Requirements: an X11 session with a compositor (GNOME, KDE, picom, …), Python 3,
+PyGObject with GTK 3 and pycairo, and WebKit2GTK 4.0 (needed only for baking).
+On Debian/Ubuntu: `sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0`.
+
+| Input | Behaviour |
+| --- | --- |
+| Drag | Pick her up; release to throw her with momentum |
+| Left click | She says a line |
+| Middle click | Feed her rice |
+| Right click | Menu: say, feed, mood, size, opacity, glow, hide, quit |
+| Tray icon | Left click shows/hides her; right click opens the same menu |
+
+How it works:
+
+- **Baked frames.** WebKitGTK re-renders the CSS-rigged SVG on the CPU every
+  frame (about one full core at 60 fps). Instead, [`desktop/bake.py`](desktop/bake.py)
+  drives the SVG offscreen once per size: it retimes every idle loop so each mood
+  loops seamlessly (7–8 s), snapshots every frame at 20 fps, and writes PNGs plus
+  a click mask per mood to `~/.cache/whalechan/frames/<hash>/`. The first launch
+  (or a new size) takes about a minute; the cache key changes when the SVG does.
+- **Playback.** [`desktop/whalechan.py`](desktop/whalechan.py) is plain GTK and
+  cairo with no WebKit at runtime. The current mood's frames are uploaded once as X server
+  pixmaps, so playback is a server-side copy (~1–2% CPU).
+- **Click-through.** The window is small and moves with her. Its X11 input
+  shape is her baked body silhouette, so clicks and scrolls next to her (and on
+  floating effects like the thought bubble) reach the windows underneath.
+- **Window.** An override-redirect popup: always on top, on every workspace,
+  never focused, never tiled by Pop Shell, and absent from the taskbar and
+  Alt-Tab. Pass `--managed` for a regular keep-above utility window instead.
+- Settings (position, size, mood, opacity, glow) persist in
+  `~/.config/whalechan/config.json`. Launching it again while it is running just
+  wakes the existing instance.
+
+Bake by hand, e.g. for another SVG with the same rig contract (`data-mood`,
+`data-strain`, `.fx` effect layers):
+
+```bash
+python3 desktop/bake.py --svg path/to/mascot.svg --width 260 --fps 20
+python3 desktop/whalechan.py --svg path/to/mascot.svg
+```
+
 ## What is included
 
 ```text
@@ -36,6 +85,9 @@ Any static server works — for example `npx serve .` or `php -S localhost:4173`
 ├── src/
 │   ├── mascot.js           <deepseek-mascot> custom element
 │   └── demo.js             demo controls + telemetry wiring
+├── desktop/
+│   ├── whalechan.py        X11 desktop mascot (GTK + cairo)
+│   └── bake.py             bakes the SVG rig into looping frames + click masks
 ├── assets/
 │   ├── whale-chan.svg      standalone rigged + animated vector SVG
 │   └── preview.webp        README preview
