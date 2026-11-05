@@ -141,14 +141,14 @@ APP_RULES = [
      ["Asking another AI? I'm right here, you know.", "Another model? Bold. I'll remember this."]),
     ("title", r"stack ?overflow", "thinking", ["Stack Overflow. Copy responsibly."]),
     ("title", r"github", None, ["GitHub! Star something cute today."]),
-    ("class", r"code|codium|cursor|zed|jetbrains|sublime|kate|neovide", "thinking",
+    ("class", r"code|codium|cursor|zed|jetbrains|sublime|kate|neovide|nvim|vi|vim", "thinking",
      ["Coding time. I'll supervise. Vigorously.", "Write good code. I'm watching. Lovingly."]),
     ("class", r"kitty|terminal|alacritty|wezterm|konsole|tilix|xterm|foot", None,
      ["Terminal time. Type fast, I'm judging.", "Ah, the hacker screen. Very cool."]),
     ("class", r"blender|godot|krita|gimp|inkscape|aseprite|magica|pico-?8|picotron", "happy",
      ["Making art? Draw me next. All my sides are good sides.", "Ooh, creative mode. I'll hold still. Mostly."]),
     ("class", r"steam|lutris|heroic", "happy", ["Games? Five minutes. I'm counting. In rice."]),
-    ("class", r"discord|slack|telegram|signal|element", None, ["Chatting? Tell them Whale-chan says hi."]),
+    ("class", r"discord|slack|telegram|signal|element|vesktop", None, ["Chatting? Tell them Whale-chan says hi."]),
     ("class", r"spotify|rhythmbox|ytm", "happy", ["Music! Is it whale songs? It should be whale songs."]),
 ]
 APP_COMMENT_COOLDOWN = 180       # seconds between any two app comments
