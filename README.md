@@ -44,7 +44,7 @@ On Debian/Ubuntu: `sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4
 | Drag | Pick her up; release to throw her with momentum |
 | Left click | She says a line |
 | Middle click | Feed her rice |
-| Right click | Menu: say, feed, mood, size, opacity, glow, behaviour toggles, hide, quit |
+| Right click | Menu: say, feed, mood, size, opacity, glow, behaviour toggles, restart, hide, quit |
 | Tray icon | Left click shows/hides her; right click opens the same menu |
 
 How it works:

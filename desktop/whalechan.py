@@ -14,6 +14,7 @@ import os
 import random
 import re
 import signal
+import subprocess
 import sys
 import time
 import warnings
@@ -46,8 +47,25 @@ CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) /
 FPS = 20
 MARGIN = 64           # transparent room around the sprite for hops, glow, rice and poofs
 EDGE = 8              # keep the sprite this far inside the work area
-SIZES = {"Small": 200, "Medium": 260, "Large": 340}
+SIZES = {"Small": 200, "Medium": 260, "Large": 340, "X-Large": 440}
 OPACITIES = [1.0, 0.85, 0.7, 0.5]
+# Restarting is a hand-off: this helper waits for the old process to release the
+# Gtk.Application D-Bus name, then execs a fresh mascot with the same arguments.
+RESTART_HELPER = """
+import os, sys, time
+pid = int(sys.argv[1])
+def running(pid):
+    try:
+        with open("/proc/%d/stat" % pid, "rb") as f:
+            data = f.read().rsplit(b")", 1)[1]
+    except (OSError, IndexError):
+        return False
+    return data.split()[:1] != [b"Z"]
+deadline = time.monotonic() + 15
+while running(pid) and time.monotonic() < deadline:
+    time.sleep(0.05)
+os.execv(sys.argv[2], sys.argv[2:])
+"""
 ACCENTS = {
     "neutral": (0.333, 0.741, 0.969),
     "angry": (1.0, 0.416, 0.373),
@@ -1527,6 +1545,19 @@ class WhaleApp(Gtk.Application):
             m.say(random.choice(lines))
             return
 
+    def restart_app(self, *_args):
+        """Replace this process with a fresh one, keeping the same launch arguments."""
+        argv = [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]]
+        try:
+            subprocess.Popen([sys.executable, "-c", RESTART_HELPER, str(os.getpid()), *argv],
+                             stdin=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+        except OSError as exc:
+            print(f"whalechan: restart failed: {exc}", file=sys.stderr)
+            if self.mascot:
+                self.mascot.say("I couldn't restart. Check the terminal.")
+            return
+        self.quit_app()
+
     def quit_app(self, *_args):
         if self.x11:
             self.x11.close()
@@ -1752,6 +1783,7 @@ class WhaleApp(Gtk.Application):
             item("Hide for 10 minutes", lambda: self.hide_mascot(600))
             item("Hide", lambda: self.hide_mascot(None))
         menu.append(Gtk.SeparatorMenuItem())
+        item("Restart", self.restart_app)
         item("Quit", self.quit_app)
         menu.show_all()
         return menu
