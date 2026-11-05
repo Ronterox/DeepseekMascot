@@ -53,9 +53,14 @@ export default Plugin.define({
 		}
 
 		const react = (event: string, key: string, text = "", quiet = false) => {
-			const args = [cli, "-q", "react", event, "--key", key]
-			if (quiet) args.push("--quiet-line")
+			// Text must come before the flags: the CLI's `react` parser accepts the
+			// line as a positional `nargs="*"`, and argparse stops collecting it at
+			// the first option (`--key`). Flags first silently rejected every
+			// reaction that carried a line, which left her stuck on `thinking`.
+			const args = [cli, "-q", "react", event]
 			if (text) args.push(text)
+			if (quiet) args.push("--quiet-line")
+			args.push("--key", key)
 			try {
 				Bun.spawn(args, { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
 			} catch {}
@@ -65,7 +70,8 @@ export default Plugin.define({
 			try {
 				for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
 					const data: any = (event as any).data ?? {}
-					const sessionID: string | undefined = data.sessionID
+					// `form.created` carries its session under `data.form`, not `data`.
+					const sessionID: string | undefined = data.sessionID ?? data.form?.sessionID
 					const key = `opencode:${event.type}:${sessionID ?? data.id ?? ""}`
 
 					switch (event.type) {

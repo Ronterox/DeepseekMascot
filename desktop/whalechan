@@ -170,9 +170,11 @@ def main(argv=None):
     events = ", ".join(EVENTS)
     aliases = ", ".join(f"{k}={v}" for k, v in sorted(EVENT_ALIASES.items()))
     p = sub.add_parser("react", help="react to an event",
-                       description=f"Events: {events}. Aliases: {aliases}.")
+                       description=f"Events: {events}. Aliases: {aliases}. "
+                                   'Put TEXT before any flags, e.g. react success "Done" --key job-1.')
     p.add_argument("event")
-    p.add_argument("text", nargs="*", help="optional line (a fitting random line otherwise)")
+    p.add_argument("text", nargs="*",
+                   help="optional line (a fitting random line otherwise); must come before flags")
     p.add_argument("--quiet-line", dest="quiet_line", action="store_true",
                    help="change mood only; say nothing unless TEXT is given")
     p.add_argument("--key", help="de-duplication key: repeats within 3s are ignored")
