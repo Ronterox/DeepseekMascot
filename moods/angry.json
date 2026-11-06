@@ -1,0 +1,68 @@
+{
+  "name": "angry",
+  "order": 20,
+  "meta": {
+    "label": "Angry",
+    "line": "I'm not angry. I'm aggressively recalibrating.",
+    "button": true,
+    "icon": "<path d=\"M5 5c2.3 2.8 4.5 4.6 7.2 5.8M19 5c-2.3 2.8-4.5 4.6-7.2 5.8M6.5 19c2-1.8 4.1-2.8 6.5-3M17.5 19c-2-1.8-4.1-2.8-6.5-3\"/>",
+    "slow": false,
+    "theme": {
+      "accent": "#d95a4e",
+      "accentDeep": "#9f392f",
+      "accentSoft": "rgba(217, 90, 78, 0.12)",
+      "button": "#d95a4e",
+      "bubble": "#ff6a5f",
+      "aura": {
+        "stops": [
+          "rgba(255, 122, 108, .32) 0%",
+          "rgba(255, 85, 70, .16) 36%",
+          "rgba(255, 85, 70, .04) 58%",
+          "rgba(255, 85, 70, 0) 72%"
+        ],
+        "duration": "1.8s"
+      },
+      "floorShadow": {
+        "stops": ["rgba(159, 44, 42, .22) 0%", "rgba(159, 44, 42, .08) 48%", "rgba(159, 44, 42, 0) 78%"],
+        "animation": "shadow-vibrate .19s linear infinite"
+      },
+      "desktopAccent": [1.0, 0.416, 0.373],
+      "desktopGlow": [1.0, 0.48, 0.42]
+    }
+  },
+  "pose": {
+    "arms": {"l": {"angles": [46, 128]}, "r": {"angles": [46, 128]}, "fist": "both"},
+    "vars": {
+      "hr": "0deg",
+      "hx": "0px",
+      "hy": "6px",
+      "bl-r": "20deg",
+      "bl-y": "6px",
+      "br-r": "20deg",
+      "br-y": "6px",
+      "ix": "0px",
+      "iy": "2px",
+      "is": ".86",
+      "ear": "-18deg",
+      "ahoge": "-10deg",
+      "tail": "-6deg",
+      "cy": "0px",
+      "cs": "1",
+      "blush": "1"
+    }
+  },
+  "layers": {"show": ["m-angry", "lid-angry", "fx-angry"], "hide": ["lash-default"]},
+  "motion": {
+    "body": {"keyframes": "stomp", "duration": ".5s", "easing": "cubic-bezier(.3,.7,.4,1)"},
+    "head": {"keyframes": "rage-shake", "duration": ".16s", "easing": "linear"},
+    "arm-l.u": {"keyframes": "pump", "duration": ".5s", "easing": "ease-in-out"},
+    "arm-r.u": {"keyframes": "pump", "duration": ".5s", "easing": "ease-in-out", "delay": "-.25s"},
+    "arm-l.f": {"keyframes": "fist-shake", "duration": ".12s", "easing": "linear"},
+    "arm-r.f": {"keyframes": "fist-shake", "duration": ".12s", "easing": "linear"},
+    "tail": {"keyframes": "tail-thrash", "duration": ".42s", "easing": "ease-in-out"},
+    "fluke": {"keyframes": "fluke-thrash", "duration": ".42s", "easing": "ease-in-out", "delay": "-.1s"},
+    "ear-l": {"keyframes": "ear-buzz", "duration": ".14s", "easing": "linear"},
+    "ear-r": {"keyframes": "ear-buzz", "duration": ".14s", "easing": "linear"},
+    "ahoge": {"keyframes": "ahoge-buzz", "duration": ".12s", "easing": "linear"}
+  }
+}

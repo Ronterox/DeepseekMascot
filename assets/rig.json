@@ -1,0 +1,431 @@
+{
+  "version": 1,
+  "viewBox": [0, 0, 900, 1060],
+  "art": {
+    "transform": "translate(152,88) scale(0.92)",
+    "offset": [152, 88],
+    "scale": 0.92
+  },
+  "mirrorX": 303,
+  "neck": [303, 452],
+  "feet": [303, 990],
+  "arms": {
+    "upper": 108,
+    "fore": 118,
+    "l": {
+      "shoulder": [236, 488],
+      "vars": {
+        "u": "--lu",
+        "f": "--lf",
+        "fist": "--lfist"
+      }
+    },
+    "r": {
+      "shoulder": [370, 488],
+      "mirrored": true,
+      "vars": {
+        "u": "--ru",
+        "f": "--rf",
+        "fist": "--rfist"
+      }
+    }
+  },
+  "parts": {
+    "body": {
+      "selector": ".char-anim",
+      "pivot": [303, 990],
+      "label": "Whole body (pivots at the feet)"
+    },
+    "upper": {
+      "selector": ".upper-anim",
+      "pivot": [0, 0],
+      "label": "Upper body (breathing; translate only)"
+    },
+    "head": {
+      "selector": ".head-anim",
+      "pivot": [303, 452],
+      "label": "Head"
+    },
+    "arm-l.u": {
+      "selector": ".arm-l .u-anim",
+      "pivot": [236, 488],
+      "label": "Left upper arm (shoulder)"
+    },
+    "arm-l.f": {
+      "selector": ".arm-l .f-anim",
+      "pivot": [236, 596],
+      "label": "Left forearm (elbow; pivot follows the upper arm)"
+    },
+    "arm-r.u": {
+      "selector": ".arm-r .u-anim",
+      "pivot": [370, 488],
+      "label": "Right upper arm (shoulder)"
+    },
+    "arm-r.f": {
+      "selector": ".arm-r .f-anim",
+      "pivot": [370, 596],
+      "label": "Right forearm (elbow; pivot follows the upper arm)"
+    },
+    "leg-l": {
+      "selector": ".leg-l",
+      "pivot": [241, 790],
+      "label": "Left leg (hip)"
+    },
+    "leg-r": {
+      "selector": ".leg-r",
+      "pivot": [366, 790],
+      "label": "Right leg (hip)"
+    },
+    "tail": {
+      "selector": ".tail-wag",
+      "pivot": [430, 806],
+      "label": "Tail"
+    },
+    "fluke": {
+      "selector": ".fluke",
+      "pivot": [632, 708],
+      "label": "Tail fluke"
+    },
+    "ear-l": {
+      "selector": ".ear-flap-l",
+      "pivot": [140, 320],
+      "label": "Left fin-ear"
+    },
+    "ear-r": {
+      "selector": ".ear-flap-r",
+      "pivot": [466, 320],
+      "label": "Right fin-ear"
+    },
+    "ahoge": {
+      "selector": ".ahoge-anim",
+      "pivot": [306, 104],
+      "label": "Ahoge"
+    },
+    "lock-l": {
+      "selector": ".lock-l",
+      "pivot": [234, 128],
+      "label": "Left side lock"
+    },
+    "lock-r": {
+      "selector": ".lock-r",
+      "pivot": [372, 128],
+      "label": "Right side lock"
+    },
+    "blink": {
+      "selector": ".blink",
+      "pivot": null,
+      "label": "Eye blink (scaleY about each eye centre)"
+    }
+  },
+  "poseVars": {
+    "hr": {
+      "default": "0deg",
+      "unit": "deg",
+      "min": -20,
+      "max": 20,
+      "step": 0.5,
+      "label": "Head tilt"
+    },
+    "hx": {
+      "default": "0px",
+      "unit": "px",
+      "min": -20,
+      "max": 20,
+      "step": 1,
+      "label": "Head shift X"
+    },
+    "hy": {
+      "default": "0px",
+      "unit": "px",
+      "min": -20,
+      "max": 20,
+      "step": 1,
+      "label": "Head shift Y"
+    },
+    "bl-r": {
+      "default": "0deg",
+      "unit": "deg",
+      "min": -30,
+      "max": 30,
+      "step": 1,
+      "label": "Left brow angle"
+    },
+    "bl-y": {
+      "default": "0px",
+      "unit": "px",
+      "min": -12,
+      "max": 12,
+      "step": 1,
+      "label": "Left brow height"
+    },
+    "br-r": {
+      "default": "0deg",
+      "unit": "deg",
+      "min": -30,
+      "max": 30,
+      "step": 1,
+      "label": "Right brow angle"
+    },
+    "br-y": {
+      "default": "0px",
+      "unit": "px",
+      "min": -12,
+      "max": 12,
+      "step": 1,
+      "label": "Right brow height"
+    },
+    "ix": {
+      "default": "0px",
+      "unit": "px",
+      "min": -14,
+      "max": 14,
+      "step": 1,
+      "label": "Gaze X"
+    },
+    "iy": {
+      "default": "0px",
+      "unit": "px",
+      "min": -14,
+      "max": 14,
+      "step": 1,
+      "label": "Gaze Y"
+    },
+    "is": {
+      "default": "1",
+      "unit": "",
+      "min": 0.6,
+      "max": 1.4,
+      "step": 0.01,
+      "label": "Iris size"
+    },
+    "ear": {
+      "default": "0deg",
+      "unit": "deg",
+      "min": -40,
+      "max": 40,
+      "step": 1,
+      "label": "Fin-ears"
+    },
+    "ahoge": {
+      "default": "0deg",
+      "unit": "deg",
+      "min": -60,
+      "max": 60,
+      "step": 1,
+      "label": "Ahoge"
+    },
+    "tail": {
+      "default": "0deg",
+      "unit": "deg",
+      "min": -30,
+      "max": 30,
+      "step": 1,
+      "label": "Tail"
+    },
+    "cy": {
+      "default": "0px",
+      "unit": "px",
+      "min": -20,
+      "max": 20,
+      "step": 1,
+      "label": "Body drop"
+    },
+    "cs": {
+      "default": "1",
+      "unit": "",
+      "min": 0.9,
+      "max": 1.1,
+      "step": 0.005,
+      "label": "Body squash"
+    },
+    "blush": {
+      "default": ".75",
+      "unit": "",
+      "min": 0,
+      "max": 1,
+      "step": 0.05,
+      "label": "Blush"
+    }
+  },
+  "layers": {
+    "eyes": {
+      "label": "Eyes",
+      "items": {
+        "eye-open": {
+          "label": "Open eyes",
+          "default": "visible"
+        },
+        "eye-happy": {
+          "label": "Happy arcs ^^",
+          "default": "hidden"
+        },
+        "eye-squeeze": {
+          "label": "Squeezed > <",
+          "default": "hidden"
+        },
+        "eye-swirl": {
+          "label": "Dizzy swirls",
+          "default": "hidden"
+        },
+        "eye-sleep": {
+          "label": "Sleeping lines",
+          "default": "hidden"
+        }
+      }
+    },
+    "lids": {
+      "label": "Eyelids",
+      "items": {
+        "lid-angry": {
+          "label": "Angry lids",
+          "default": "hidden"
+        },
+        "lid-smug": {
+          "label": "Smug half-lids",
+          "default": "hidden"
+        },
+        "lid-sad": {
+          "label": "Sad lids",
+          "default": "hidden"
+        }
+      }
+    },
+    "eyeDetails": {
+      "label": "Eye details",
+      "items": {
+        "hl": {
+          "label": "Eye sparkle",
+          "default": "visible"
+        },
+        "hl-sad": {
+          "label": "Teary sparkle",
+          "default": "hidden"
+        },
+        "tear-pool": {
+          "label": "Tear pool",
+          "default": "hidden"
+        },
+        "lash-default": {
+          "label": "Default lashes",
+          "default": "visible"
+        }
+      }
+    },
+    "mouths": {
+      "label": "Mouths",
+      "items": {
+        "m-neutral": {
+          "label": "Neutral smile",
+          "default": "hidden"
+        },
+        "m-angry": {
+          "label": "Angry shout",
+          "default": "hidden"
+        },
+        "m-smug": {
+          "label": "Smug cat mouth",
+          "default": "hidden"
+        },
+        "m-happy": {
+          "label": "Open smile",
+          "default": "hidden"
+        },
+        "m-sad": {
+          "label": "Wobbly frown",
+          "default": "hidden"
+        },
+        "m-think0": {
+          "label": "Small 'o'",
+          "default": "hidden"
+        },
+        "m-think1": {
+          "label": "Wavy strain",
+          "default": "hidden"
+        },
+        "m-sleepy": {
+          "label": "Snoring",
+          "default": "hidden"
+        },
+        "m-think2": {
+          "label": "Jagged panic",
+          "default": "hidden"
+        }
+      }
+    },
+    "effects": {
+      "label": "Effects",
+      "items": {
+        "fx-angry": {
+          "label": "Anger mark + steam",
+          "default": "hidden"
+        },
+        "fx-sad": {
+          "label": "Tears, rain cloud, gloom",
+          "default": "hidden"
+        },
+        "fx-sweat": {
+          "label": "Sweat drop",
+          "default": "hidden"
+        },
+        "fx-overheat": {
+          "label": "Overheat steam",
+          "default": "hidden"
+        },
+        "fx-sleepy": {
+          "label": "Zzz + snot bubble",
+          "default": "hidden"
+        },
+        "fx-smug": {
+          "label": "Twinkles",
+          "default": "hidden"
+        },
+        "fx-happy": {
+          "label": "Hearts + stars",
+          "default": "hidden"
+        },
+        "fx-think": {
+          "label": "Thought bubble",
+          "default": "hidden"
+        },
+        "fx-dance": {
+          "label": "Music notes",
+          "default": "hidden"
+        }
+      }
+    },
+    "props": {
+      "label": "Props",
+      "items": {
+        "pillow": {
+          "label": "Whale plush",
+          "default": "hidden"
+        },
+        "bowl": {
+          "label": "Rice bowl",
+          "default": "hidden"
+        }
+      }
+    },
+    "thought": {
+      "label": "Thought bubble",
+      "items": {
+        "think-dots": {
+          "label": "Thinking dots",
+          "default": "hidden"
+        },
+        "think-scribble": {
+          "label": "Scribble",
+          "default": "hidden"
+        },
+        "qmark": {
+          "label": "Question mark",
+          "default": "hidden"
+        },
+        "bang": {
+          "label": "?! mark",
+          "default": "hidden"
+        }
+      }
+    }
+  }
+}

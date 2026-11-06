@@ -1,0 +1,96 @@
+{
+  "blink": [{"t": [0, 93, 100], "transform": "scaleY(1)"}, {"t": 95.5, "transform": "scaleY(.08)"}],
+  "float-bob": [{"t": [0, 100], "transform": "translateY(0)"}, {"t": 50, "transform": "translateY(-9px)"}],
+  "breathe": [{"t": [0, 100], "transform": "translateY(0)"}, {"t": 50, "transform": "translateY(-2.5px)"}],
+  "head-idle": [{"t": [0, 100], "transform": "rotate(-2deg)"}, {"t": 50, "transform": "rotate(2.5deg)"}],
+  "tail-idle": [{"t": [0, 100], "transform": "rotate(-4deg)"}, {"t": 50, "transform": "rotate(5deg)"}],
+  "fluke-idle": [{"t": [0, 100], "transform": "rotate(-6deg)"}, {"t": 50, "transform": "rotate(8deg)"}],
+  "ear-idle": [{"t": [0, 100], "transform": "rotate(0)"}, {"t": 50, "transform": "rotate(-6deg)"}],
+  "ahoge-idle": [{"t": [0, 100], "transform": "rotate(-7deg)"}, {"t": 50, "transform": "rotate(8deg)"}],
+  "arm-idle": [{"t": [0, 100], "transform": "rotate(0)"}, {"t": 50, "transform": "rotate(2.5deg)"}],
+  "lock-sway": [{"t": [0, 100], "transform": "rotate(0)"}, {"t": 50, "transform": "rotate(-1.5deg)"}],
+  "stomp": [
+    {"t": [0, 100], "transform": "translateY(0) scale(1, 1)"},
+    {"t": 30, "transform": "translateY(-12px) scale(.99, 1.02)"},
+    {"t": 55, "transform": "translateY(0) scale(1.03, .96)"},
+    {"t": 70, "transform": "translateY(0) scale(1, 1)"}
+  ],
+  "rage-shake": [
+    {"t": [0, 100], "transform": "rotate(-1.6deg) translateX(-1px)"},
+    {"t": 50, "transform": "rotate(1.6deg) translateX(1px)"}
+  ],
+  "pump": [{"t": [0, 100], "transform": "rotate(-14deg)"}, {"t": 50, "transform": "rotate(10deg)"}],
+  "fist-shake": [{"t": [0, 100], "transform": "rotate(-3deg)"}, {"t": 50, "transform": "rotate(3deg)"}],
+  "tail-thrash": [{"t": [0, 100], "transform": "rotate(-12deg)"}, {"t": 50, "transform": "rotate(12deg)"}],
+  "fluke-thrash": [{"t": [0, 100], "transform": "rotate(-16deg)"}, {"t": 50, "transform": "rotate(16deg)"}],
+  "ear-buzz": [{"t": [0, 100], "transform": "rotate(-4deg)"}, {"t": 50, "transform": "rotate(4deg)"}],
+  "ahoge-buzz": [{"t": [0, 100], "transform": "rotate(-5deg)"}, {"t": 50, "transform": "rotate(5deg)"}],
+  "smug-sway": [{"t": [0, 100], "transform": "rotate(-1.6deg)"}, {"t": 50, "transform": "rotate(1.6deg)"}],
+  "smug-nod": [
+    {"t": [0, 100], "transform": "rotate(0) translateY(0)"},
+    {"t": 50, "transform": "rotate(-3deg) translateY(-3px)"}
+  ],
+  "tail-swish": [{"t": [0, 100], "transform": "rotate(-8deg)"}, {"t": 50, "transform": "rotate(8deg)"}],
+  "hop": [
+    {"t": [0, 100], "transform": "translateY(0) scale(1.04, .95)"},
+    {"t": 18, "transform": "translateY(-14px) scale(.97, 1.04)"},
+    {"t": 45, "transform": "translateY(-40px) scale(1, 1)"},
+    {"t": 78, "transform": "translateY(0) scale(1.03, .96)"}
+  ],
+  "happy-tilt": [{"t": [0, 100], "transform": "rotate(-5deg)"}, {"t": 50, "transform": "rotate(5deg)"}],
+  "cheer": [{"t": 0, "transform": "rotate(-10deg)"}, {"t": 100, "transform": "rotate(12deg)"}],
+  "tail-wag": [{"t": 0, "transform": "rotate(-14deg)"}, {"t": 100, "transform": "rotate(10deg)"}],
+  "ear-flap": [{"t": 0, "transform": "rotate(-12deg)"}, {"t": 100, "transform": "rotate(10deg)"}],
+  "ahoge-boing": [
+    {"t": [0, 100], "transform": "rotate(0) scaleY(1)"},
+    {"t": 40, "transform": "rotate(-14deg) scaleY(1.1)"},
+    {"t": 70, "transform": "rotate(10deg) scaleY(.92)"}
+  ],
+  "sob": [
+    {"t": [0, 100], "transform": "translateY(0)"},
+    {"t": 20, "transform": "translateY(3px)"},
+    {"t": 35, "transform": "translateY(0)"},
+    {"t": 50, "transform": "translateY(3px)"}
+  ],
+  "sob-head": [
+    {"t": [0, 100], "transform": "rotate(0)"},
+    {"t": 20, "transform": "rotate(1.5deg) translateY(2px)"},
+    {"t": 50, "transform": "rotate(-1deg) translateY(2px)"}
+  ],
+  "limp": [{"t": [0, 100], "transform": "rotate(0)"}, {"t": 50, "transform": "rotate(-4deg)"}],
+  "rub-eye": [{"t": 0, "transform": "rotate(-9deg)"}, {"t": 100, "transform": "rotate(7deg)"}],
+  "fluke-sad": [{"t": [0, 100], "transform": "rotate(0)"}, {"t": 50, "transform": "rotate(-5deg)"}],
+  "ahoge-droop": [{"t": [0, 100], "transform": "rotate(0)"}, {"t": 50, "transform": "rotate(6deg)"}],
+  "think-sway": [{"t": [0, 100], "transform": "rotate(-1deg)"}, {"t": 50, "transform": "rotate(1deg)"}],
+  "chin-tap": [{"t": [0, 60, 100], "transform": "rotate(0)"}, {"t": 75, "transform": "rotate(-7deg)"}],
+  "tail-tap": [{"t": [0, 60, 100], "transform": "rotate(0)"}, {"t": 75, "transform": "rotate(-10deg)"}],
+  "ahoge-ponder": [{"t": [0, 100], "transform": "rotate(-8deg)"}, {"t": 50, "transform": "rotate(8deg)"}],
+  "strain-shake": [{"t": [0, 100], "transform": "rotate(-1deg)"}, {"t": 50, "transform": "rotate(1deg)"}],
+  "temple-rub": [{"t": 0, "transform": "rotate(-6deg)"}, {"t": 100, "transform": "rotate(6deg)"}],
+  "overheat": [
+    {"t": [0, 100], "transform": "translateX(-1.5px)"},
+    {"t": 50, "transform": "translateX(1.5px)"}
+  ],
+  "dizzy": [{"t": [0, 100], "transform": "rotate(-6deg)"}, {"t": 50, "transform": "rotate(6deg)"}],
+  "flail": [{"t": 0, "transform": "rotate(-16deg)"}, {"t": 100, "transform": "rotate(14deg)"}],
+  "ahoge-spin": [{"t": 0, "transform": "rotate(0)"}, {"t": 100, "transform": "rotate(360deg)"}],
+  "doze-sway": [
+    {"t": [0, 100], "transform": "rotate(-1deg) translateY(0)"},
+    {"t": 50, "transform": "rotate(1.2deg) translateY(2px)"}
+  ],
+  "sleep-breathe": [{"t": [0, 100], "transform": "translateY(0)"}, {"t": 45, "transform": "translateY(-4px)"}],
+  "doze-nod": [
+    {"t": [0, 100], "transform": "rotate(0) translateY(0)"},
+    {"t": 62, "transform": "rotate(5deg) translateY(4px)"},
+    {"t": 72, "transform": "rotate(6.5deg) translateY(6px)"},
+    {"t": 78, "transform": "rotate(-2deg) translateY(-3px)"},
+    {"t": 86, "transform": "rotate(.6deg) translateY(0)"}
+  ],
+  "hug": [{"t": [0, 100], "transform": "rotate(0)"}, {"t": 45, "transform": "rotate(-1.5deg)"}],
+  "tail-lazy": [{"t": [0, 100], "transform": "rotate(-2deg)"}, {"t": 50, "transform": "rotate(3deg)"}],
+  "ahoge-doze": [
+    {"t": [0, 100], "transform": "rotate(0)"},
+    {"t": 62, "transform": "rotate(9deg)"},
+    {"t": 78, "transform": "rotate(-6deg)"}
+  ]
+}

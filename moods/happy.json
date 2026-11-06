@@ -1,0 +1,73 @@
+{
+  "name": "happy",
+  "order": 40,
+  "meta": {
+    "label": "Happy",
+    "line": "I did it! The rice is still warm. Double win.",
+    "button": true,
+    "icon": "<path d=\"M12 2.8l2.2 6.1 6.1 2.2-6.1 2.2L12 19.4l-2.2-6.1-6.1-2.2 6.1-2.2L12 2.8Z\"/><path d=\"M19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z\"/>",
+    "slow": false,
+    "theme": {
+      "accent": "#269ad4",
+      "accentDeep": "#116b99",
+      "accentSoft": "rgba(38, 154, 212, 0.12)",
+      "button": "#218fc6",
+      "bubble": "#2e9fe0",
+      "aura": {
+        "stops": [
+          "rgba(160, 243, 255, .38) 0%",
+          "rgba(79, 204, 255, .17) 36%",
+          "rgba(79, 204, 255, .04) 58%",
+          "rgba(79, 204, 255, 0) 72%"
+        ],
+        "duration": "3.4s"
+      },
+      "floorShadow": {
+        "stops": ["rgba(34, 129, 188, .2) 0%", "rgba(34, 129, 188, .07) 48%", "rgba(34, 129, 188, 0) 78%"],
+        "animation": "shadow-hop 1.15s cubic-bezier(.3,.75,.4,1) infinite"
+      },
+      "desktopAccent": [0.18, 0.624, 0.878],
+      "desktopGlow": [0.63, 0.95, 1.0]
+    }
+  },
+  "pose": {
+    "arms": {"l": {"hand": [150, 330]}, "r": {"hand": [462, 316]}, "fist": "l"},
+    "vars": {
+      "hr": "4deg",
+      "hx": "0px",
+      "hy": "-4px",
+      "bl-r": "-8deg",
+      "bl-y": "-8px",
+      "br-r": "-8deg",
+      "br-y": "-8px",
+      "ix": "0px",
+      "iy": "0px",
+      "is": "1",
+      "ear": "-14deg",
+      "ahoge": "-6deg",
+      "tail": "-10deg",
+      "cy": "0px",
+      "cs": "1",
+      "blush": "1"
+    }
+  },
+  "layers": {"show": ["m-happy", "eye-happy", "fx-happy", "bowl"], "hide": ["eye-open"]},
+  "motion": {
+    "body": {"keyframes": "hop", "duration": ".76s", "easing": "cubic-bezier(.3,.6,.4,1)"},
+    "upper": "none",
+    "head": {"keyframes": "happy-tilt", "duration": "1.52s", "easing": "ease-in-out"},
+    "arm-l.u": {"keyframes": "cheer", "duration": ".38s", "easing": "ease-in-out", "direction": "alternate"},
+    "arm-r.u": {
+      "keyframes": "cheer",
+      "duration": ".38s",
+      "easing": "ease-in-out",
+      "delay": "-.38s",
+      "direction": "alternate"
+    },
+    "tail": {"keyframes": "tail-wag", "duration": ".38s", "easing": "ease-in-out", "direction": "alternate"},
+    "fluke": {"keyframes": "fluke-thrash", "duration": ".38s", "easing": "ease-in-out", "delay": "-.1s"},
+    "ear-l": {"keyframes": "ear-flap", "duration": ".38s", "easing": "ease-in-out", "direction": "alternate"},
+    "ear-r": {"keyframes": "ear-flap", "duration": ".38s", "easing": "ease-in-out", "direction": "alternate"},
+    "ahoge": {"keyframes": "ahoge-boing", "duration": ".76s", "easing": "ease-in-out"}
+  }
+}

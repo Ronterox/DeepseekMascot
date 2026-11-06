@@ -1,0 +1,63 @@
+{
+  "name": "smug",
+  "order": 30,
+  "meta": {
+    "label": "Smug",
+    "line": "Oh, you want an explanation? Adorable.",
+    "button": true,
+    "icon": "<path d=\"M3.5 12.5c2.6-3 5.8-4.6 8.7-4.6 3.2 0 6 1.7 8.3 5\"/><path d=\"M5.5 13.2c3.3 2.3 9.4 2 12.8-2.2\"/><circle cx=\"13\" cy=\"11.1\" r=\"1.25\" fill=\"currentColor\" stroke=\"none\"/>",
+    "slow": false,
+    "theme": {
+      "accent": "#c19138",
+      "accentDeep": "#8c6420",
+      "accentSoft": "rgba(193, 145, 56, 0.13)",
+      "button": "#b7862e",
+      "bubble": "#e7b453",
+      "aura": {
+        "stops": [
+          "rgba(255, 226, 148, .3) 0%",
+          "rgba(243, 190, 88, .14) 36%",
+          "rgba(243, 190, 88, .04) 58%",
+          "rgba(243, 190, 88, 0) 72%"
+        ],
+        "duration": "5s"
+      },
+      "floorShadow": {
+        "stops": ["rgba(115, 92, 40, .18) 0%", "rgba(115, 92, 40, .06) 48%", "rgba(115, 92, 40, 0) 78%"]
+      },
+      "desktopAccent": [0.906, 0.706, 0.325],
+      "desktopGlow": [1.0, 0.89, 0.58]
+    }
+  },
+  "pose": {
+    "arms": {"l": {"hand": [238, 594]}, "r": {"hand": [368, 594]}, "fist": "both"},
+    "vars": {
+      "hr": "-7deg",
+      "hx": "-4px",
+      "hy": "-4px",
+      "bl-r": "-6deg",
+      "bl-y": "-6px",
+      "br-r": "10deg",
+      "br-y": "2px",
+      "ix": "-7px",
+      "iy": "1px",
+      "is": "1",
+      "ear": "-8deg",
+      "ahoge": "12deg",
+      "tail": "-14deg",
+      "cy": "0px",
+      "cs": "1",
+      "blush": ".9"
+    }
+  },
+  "layers": {"show": ["m-smug", "lid-smug", "fx-smug"], "hide": ["lash-default"]},
+  "motion": {
+    "body": {"keyframes": "smug-sway", "duration": "3s", "easing": "ease-in-out"},
+    "head": {"keyframes": "smug-nod", "duration": "1.5s", "easing": "ease-in-out"},
+    "arm-l.u": "none",
+    "arm-r.u": "none",
+    "tail": {"keyframes": "tail-swish", "duration": "2.4s", "easing": "ease-in-out"},
+    "fluke": {"keyframes": "fluke-idle", "duration": "2.4s", "easing": "ease-in-out", "delay": "-.4s"},
+    "ahoge": {"keyframes": "ahoge-idle", "duration": "1.5s", "easing": "ease-in-out"}
+  }
+}

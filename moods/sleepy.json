@@ -1,0 +1,67 @@
+{
+  "name": "sleepy",
+  "order": 70,
+  "meta": {
+    "label": "Sleepy",
+    "line": "Zzz… five more minutes… the rice can wait…",
+    "button": true,
+    "icon": "<path d=\"M19.5 14.6A8 8 0 1 1 9.4 4.5a6.4 6.4 0 0 0 10.1 10.1Z\"/><path d=\"M14 3.5h4l-4 4.5h4\"/>",
+    "slow": true,
+    "theme": {
+      "accent": "#8170cf",
+      "accentDeep": "#5a4aa6",
+      "accentSoft": "rgba(129, 112, 207, 0.12)",
+      "button": "#7666c4",
+      "bubble": "#8b7ad9",
+      "aura": {
+        "stops": [
+          "rgba(190, 172, 255, .3) 0%",
+          "rgba(139, 122, 217, .13) 36%",
+          "rgba(139, 122, 217, .03) 58%",
+          "rgba(139, 122, 217, 0) 72%"
+        ],
+        "duration": "4.8s"
+      },
+      "floorShadow": null,
+      "desktopAccent": [0.545, 0.478, 0.851],
+      "desktopGlow": [0.72, 0.66, 1.0]
+    }
+  },
+  "pose": {
+    "arms": {"l": {"hand": [262, 640]}, "r": {"hand": [344, 640]}, "fist": "none"},
+    "vars": {
+      "hr": "9deg",
+      "hx": "5px",
+      "hy": "12px",
+      "bl-r": "-6deg",
+      "bl-y": "3px",
+      "br-r": "-6deg",
+      "br-y": "3px",
+      "ix": "0px",
+      "iy": "0px",
+      "is": "1",
+      "ear": "22deg",
+      "ahoge": "38deg",
+      "tail": "16deg",
+      "cy": "4px",
+      "cs": ".985",
+      "blush": ".95"
+    }
+  },
+  "layers": {"show": ["m-sleepy", "eye-sleep", "fx-sleepy", "pillow"], "hide": ["eye-open"]},
+  "motion": {
+    "body": {"keyframes": "doze-sway", "duration": "4.8s", "easing": "ease-in-out"},
+    "upper": {"keyframes": "sleep-breathe", "duration": "4.8s", "easing": "ease-in-out"},
+    "head": {"keyframes": "doze-nod", "duration": "4.8s", "easing": "ease-in-out"},
+    "arm-l.u": {"keyframes": "hug", "duration": "4.8s", "easing": "ease-in-out"},
+    "arm-r.u": {"keyframes": "hug", "duration": "4.8s", "easing": "ease-in-out"},
+    "tail": {"keyframes": "tail-lazy", "duration": "4.8s", "easing": "ease-in-out"},
+    "fluke": {"keyframes": "fluke-idle", "duration": "4.8s", "easing": "ease-in-out", "delay": "-.6s"},
+    "ear-l": {"keyframes": "ear-idle", "duration": "4.8s", "easing": "ease-in-out"},
+    "ear-r": {"keyframes": "ear-idle", "duration": "4.8s", "easing": "ease-in-out"},
+    "ahoge": {"keyframes": "ahoge-doze", "duration": "4.8s", "easing": "ease-in-out"},
+    "lock-l": {"keyframes": "lock-sway", "duration": "4.8s", "easing": "ease-in-out"},
+    "lock-r": {"keyframes": "lock-sway", "duration": "4.8s", "easing": "ease-in-out"},
+    "blink": "none"
+  }
+}

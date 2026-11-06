@@ -1,0 +1,126 @@
+{
+  "name": "dance",
+  "order": 80,
+  "meta": {
+    "label": "Dance",
+    "line": "Right fist up! Pump it! Now the other side!",
+    "button": true,
+    "icon": "<path d=\"M9 18V5.5l10-2V16\"/><circle cx=\"6.5\" cy=\"18\" r=\"2.5\"/><circle cx=\"16.5\" cy=\"16\" r=\"2.5\"/>",
+    "slow": false,
+    "theme": {
+      "accent": "#d9608f",
+      "accentDeep": "#a83c68",
+      "accentSoft": "rgba(217, 96, 143, 0.12)",
+      "button": "#cf5a88",
+      "bubble": "#ec6f9e",
+      "aura": {
+        "stops": [
+          "rgba(255, 176, 214, .34) 0%",
+          "rgba(236, 111, 158, .15) 36%",
+          "rgba(236, 111, 158, .04) 58%",
+          "rgba(236, 111, 158, 0) 72%"
+        ],
+        "duration": "1.6s"
+      },
+      "floorShadow": null,
+      "desktopAccent": [0.925, 0.435, 0.62],
+      "desktopGlow": [1.0, 0.69, 0.84]
+    }
+  },
+  "pose": {
+    "arms": {"l": {"hand": [238, 594]}, "r": {"hand": [368, 594]}, "fist": "both"},
+    "vars": {
+      "hr": "0deg",
+      "hx": "0px",
+      "hy": "-2px",
+      "bl-r": "-8deg",
+      "bl-y": "-8px",
+      "br-r": "-8deg",
+      "br-y": "-8px",
+      "ix": "0px",
+      "iy": "0px",
+      "is": "1",
+      "ear": "-10deg",
+      "ahoge": "-4deg",
+      "tail": "-6deg",
+      "cy": "0px",
+      "cs": "1",
+      "blush": "1"
+    }
+  },
+  "layers": {"show": ["m-happy", "eye-happy", "fx-dance"], "hide": ["eye-open"]},
+  "motion": {
+    "body": {"keyframes": "body", "duration": "3.2s", "easing": "ease-in-out"},
+    "upper": "none",
+    "head": {"keyframes": "head", "duration": ".8s", "easing": "ease-in-out"},
+    "arm-r": {
+      "stops": [
+        {"t": 0, "hand": [368, 594]},
+        {"t": 4, "hand": [456, 250]},
+        {"t": 8.2, "hand": [441, 370]},
+        {"t": 12.5, "hand": [456, 250]},
+        {"t": 18.8, "hand": [441, 370]},
+        {"t": 25, "hand": [456, 250]},
+        {"t": 31.2, "hand": [441, 370]},
+        {"t": 37.5, "hand": [456, 250]},
+        {"t": 48, "hand": [368, 594]},
+        {"t": 100, "hand": [368, 594]}
+      ],
+      "duration": "3.2s",
+      "easing": "ease-in-out"
+    },
+    "arm-l": {
+      "stops": [
+        {"t": 0, "hand": [238, 594]},
+        {"t": 4, "hand": [150, 250]},
+        {"t": 8.2, "hand": [165, 370]},
+        {"t": 12.5, "hand": [150, 250]},
+        {"t": 18.8, "hand": [165, 370]},
+        {"t": 25, "hand": [150, 250]},
+        {"t": 31.2, "hand": [165, 370]},
+        {"t": 37.5, "hand": [150, 250]},
+        {"t": 48, "hand": [238, 594]},
+        {"t": 100, "hand": [238, 594]}
+      ],
+      "duration": "3.2s",
+      "easing": "ease-in-out",
+      "delay": "-1.6s"
+    },
+    "leg-l": {"keyframes": "kick-l", "duration": "3.2s", "easing": "ease-in-out"},
+    "leg-r": {"keyframes": "kick-r", "duration": "3.2s", "easing": "ease-in-out"},
+    "tail": {"keyframes": "tail-wag", "duration": ".4s", "easing": "ease-in-out", "direction": "alternate"},
+    "fluke": {"keyframes": "fluke-thrash", "duration": ".8s", "easing": "ease-in-out", "delay": "-.1s"},
+    "ear-l": {"keyframes": "ear-flap", "duration": ".4s", "easing": "ease-in-out", "direction": "alternate"},
+    "ear-r": {"keyframes": "ear-flap", "duration": ".4s", "easing": "ease-in-out", "direction": "alternate"},
+    "ahoge": {"keyframes": "ahoge-boing", "duration": ".8s", "easing": "ease-in-out"},
+    "lock-l": {"keyframes": "lock-sway", "duration": "1.6s", "easing": "ease-in-out"},
+    "lock-r": {"keyframes": "lock-sway", "duration": "1.6s", "easing": "ease-in-out"}
+  },
+  "keyframes": {
+    "body": [
+      {"t": 0, "transform": "translate(0, 3px) rotate(0) scale(1.02, .98)"},
+      {"t": 5, "transform": "translate(8px, -7px) rotate(2.5deg) scale(.99, 1.02)"},
+      {"t": 12.5, "transform": "translate(8px, 3px) rotate(2.5deg) scale(1.02, .98)"},
+      {"t": 18.8, "transform": "translate(8px, -7px) rotate(2.5deg) scale(.99, 1.02)"},
+      {"t": 25, "transform": "translate(8px, 3px) rotate(2.5deg) scale(1.02, .98)"},
+      {"t": 31.2, "transform": "translate(8px, -7px) rotate(2.5deg) scale(.99, 1.02)"},
+      {"t": 37.5, "transform": "translate(8px, 3px) rotate(2.5deg) scale(1.02, .98)"},
+      {"t": 43.8, "transform": "translate(8px, -7px) rotate(2.5deg) scale(.99, 1.02)"},
+      {"t": 50, "transform": "translate(0, 3px) rotate(0) scale(1.02, .98)"},
+      {"t": 55, "transform": "translate(-8px, -7px) rotate(-2.5deg) scale(.99, 1.02)"},
+      {"t": 62.5, "transform": "translate(-8px, 3px) rotate(-2.5deg) scale(1.02, .98)"},
+      {"t": 68.8, "transform": "translate(-8px, -7px) rotate(-2.5deg) scale(.99, 1.02)"},
+      {"t": 75, "transform": "translate(-8px, 3px) rotate(-2.5deg) scale(1.02, .98)"},
+      {"t": 81.2, "transform": "translate(-8px, -7px) rotate(-2.5deg) scale(.99, 1.02)"},
+      {"t": 87.5, "transform": "translate(-8px, 3px) rotate(-2.5deg) scale(1.02, .98)"},
+      {"t": 93.8, "transform": "translate(-8px, -7px) rotate(-2.5deg) scale(.99, 1.02)"},
+      {"t": 100, "transform": "translate(0, 3px) rotate(0) scale(1.02, .98)"}
+    ],
+    "head": [{"t": [0, 100], "transform": "rotate(-4deg)"}, {"t": 50, "transform": "rotate(4deg)"}],
+    "kick-l": [{"t": [0, 48, 100], "transform": "rotate(0)"}, {"t": [5, 43], "transform": "rotate(16deg)"}],
+    "kick-r": [
+      {"t": [0, 50, 98, 100], "transform": "rotate(0)"},
+      {"t": [55, 93], "transform": "rotate(-16deg)"}
+    ]
+  }
+}

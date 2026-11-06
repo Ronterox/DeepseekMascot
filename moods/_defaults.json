@@ -1,0 +1,38 @@
+{
+  "pose": {
+    "arms": {"l": {"hand": [125, 680]}, "r": {"hand": [481, 680]}, "fist": "none"},
+    "vars": {
+      "hr": "0deg",
+      "hx": "0px",
+      "hy": "0px",
+      "bl-r": "0deg",
+      "bl-y": "0px",
+      "br-r": "0deg",
+      "br-y": "0px",
+      "ix": "0px",
+      "iy": "0px",
+      "is": "1",
+      "ear": "0deg",
+      "ahoge": "0deg",
+      "tail": "0deg",
+      "cy": "0px",
+      "cs": "1",
+      "blush": ".75"
+    }
+  },
+  "motion": {
+    "blink": {"keyframes": "blink", "duration": "4.6s"},
+    "body": {"keyframes": "float-bob", "duration": "4.2s", "easing": "ease-in-out"},
+    "upper": {"keyframes": "breathe", "duration": "3.6s", "easing": "ease-in-out"},
+    "head": {"keyframes": "head-idle", "duration": "5.2s", "easing": "ease-in-out"},
+    "tail": {"keyframes": "tail-idle", "duration": "3.2s", "easing": "ease-in-out"},
+    "fluke": {"keyframes": "fluke-idle", "duration": "3.2s", "easing": "ease-in-out", "delay": "-.5s"},
+    "ear-l": {"keyframes": "ear-idle", "duration": "3s", "easing": "ease-in-out"},
+    "ear-r": {"keyframes": "ear-idle", "duration": "3s", "easing": "ease-in-out", "delay": "-.25s"},
+    "ahoge": {"keyframes": "ahoge-idle", "duration": "2.6s", "easing": "ease-in-out"},
+    "arm-l.u": {"keyframes": "arm-idle", "duration": "3.6s", "easing": "ease-in-out"},
+    "arm-r.u": {"keyframes": "arm-idle", "duration": "3.6s", "easing": "ease-in-out", "delay": "-1.8s"},
+    "lock-l": {"keyframes": "lock-sway", "duration": "3.6s", "easing": "ease-in-out"},
+    "lock-r": {"keyframes": "lock-sway", "duration": "3.6s", "easing": "ease-in-out", "delay": "-1.2s"}
+  }
+}

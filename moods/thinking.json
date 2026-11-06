@@ -1,0 +1,149 @@
+{
+  "name": "thinking",
+  "order": 60,
+  "meta": {
+    "label": "Thinking",
+    "line": "Think. Think. The answer is in here somewhere.",
+    "button": true,
+    "icon": "<path d=\"M7 16.1a3.5 3.5 0 0 1 .6-7 5.1 5.1 0 0 1 9.7 0 3.9 3.9 0 0 1 3.1 6.9 3.2 3.2 0 0 1-3 4.2H8a3 3 0 0 1-1-4.1Z\"/><circle cx=\"9.5\" cy=\"16\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"13\" cy=\"16\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"16.5\" cy=\"16\" r=\".7\" fill=\"currentColor\" stroke=\"none\"/>",
+    "slow": false,
+    "theme": {
+      "accent": "#3ea5bb",
+      "accentDeep": "#267d8f",
+      "accentSoft": "rgba(62, 165, 187, 0.12)",
+      "button": "#3999ae",
+      "bubble": "#45b9dd",
+      "aura": {
+        "stops": [
+          "rgba(126, 230, 247, .32) 0%",
+          "rgba(68, 178, 210, .13) 36%",
+          "rgba(68, 178, 210, .03) 58%",
+          "rgba(68, 178, 210, 0) 72%"
+        ],
+        "duration": "4.8s"
+      },
+      "floorShadow": {
+        "stops": ["rgba(55, 125, 155, .18) 0%", "rgba(55, 125, 155, .06) 48%", "rgba(55, 125, 155, 0) 78%"]
+      },
+      "desktopAccent": [0.271, 0.725, 0.867],
+      "desktopGlow": [0.49, 0.9, 0.97],
+      "variants": {"2": {"floorShadow": {"animation": "shadow-vibrate .21s linear infinite"}}}
+    }
+  },
+  "pose": {
+    "arms": {"l": {"hand": [272.4, 559.2]}, "r": {"hand": [322, 440], "elbowOut": false}, "fist": "l"},
+    "vars": {
+      "hr": "-8deg",
+      "hx": "-4px",
+      "hy": "0px",
+      "bl-r": "-12deg",
+      "bl-y": "-8px",
+      "br-r": "12deg",
+      "br-y": "2px",
+      "ix": "8px",
+      "iy": "-9px",
+      "is": ".95",
+      "ear": "-6deg",
+      "ahoge": "24deg",
+      "tail": "6deg",
+      "cy": "0px",
+      "cs": "1",
+      "blush": ".7"
+    }
+  },
+  "layers": {"show": ["fx-think"]},
+  "motion": {
+    "body": {"keyframes": "think-sway", "duration": "3.4s", "easing": "ease-in-out"},
+    "head": {"keyframes": "head-idle", "duration": "3.4s", "easing": "ease-in-out"},
+    "arm-l.u": "none",
+    "arm-r.u": "none",
+    "arm-r.f": {"keyframes": "chin-tap", "duration": ".9s", "easing": "ease-in-out"},
+    "tail": {"keyframes": "tail-tap", "duration": "1.8s", "easing": "ease-in-out"},
+    "ahoge": {"keyframes": "ahoge-ponder", "duration": "2.2s", "easing": "ease-in-out"}
+  },
+  "variants": {
+    "0": {"layers": {"show": ["m-think0", "think-dots", "qmark"]}},
+    "1": {
+      "pose": {
+        "arms": {"l": {"hand": [172, 334]}, "r": {"hand": [434, 334]}, "fist": "none"},
+        "vars": {
+          "hr": "0deg",
+          "hx": "0px",
+          "hy": "4px",
+          "bl-r": "16deg",
+          "bl-y": "4px",
+          "br-r": "16deg",
+          "br-y": "4px",
+          "ear": "12deg",
+          "ahoge": "40deg",
+          "tail": "10deg",
+          "blush": ".9"
+        }
+      },
+      "layers": {"show": ["m-think1", "eye-squeeze", "think-dots", "fx-sweat"], "hide": ["eye-open"]},
+      "motion": {
+        "body": {"keyframes": "think-sway", "duration": "1.6s", "easing": "ease-in-out"},
+        "head": {"keyframes": "strain-shake", "duration": ".3s", "easing": "ease-in-out"},
+        "arm-l.f": {
+          "keyframes": "temple-rub",
+          "duration": ".3s",
+          "easing": "ease-in-out",
+          "direction": "alternate"
+        },
+        "arm-r.f": {
+          "keyframes": "temple-rub",
+          "duration": ".3s",
+          "easing": "ease-in-out",
+          "direction": "alternate"
+        },
+        "ahoge": {"keyframes": "ahoge-buzz", "duration": ".3s", "easing": "linear"}
+      },
+      "css": "& .dot { animation-duration: .6s; }"
+    },
+    "2": {
+      "pose": {
+        "arms": {"l": {"hand": [152, 304]}, "r": {"hand": [454, 304]}, "fist": "none"},
+        "vars": {
+          "hr": "0deg",
+          "hx": "0px",
+          "hy": "2px",
+          "bl-r": "-14deg",
+          "bl-y": "-6px",
+          "br-r": "-14deg",
+          "br-y": "-6px",
+          "ear": "-20deg",
+          "ahoge": "-4deg",
+          "tail": "-4deg",
+          "blush": "1"
+        }
+      },
+      "layers": {
+        "show": ["m-think2", "eye-swirl", "think-scribble", "fx-sweat", "fx-overheat", "bang"],
+        "hide": ["eye-open"]
+      },
+      "motion": {
+        "body": {"keyframes": "overheat", "duration": ".14s", "easing": "linear"},
+        "head": {"keyframes": "dizzy", "duration": ".9s", "easing": "ease-in-out"},
+        "arm-l.u": {
+          "keyframes": "flail",
+          "duration": ".26s",
+          "easing": "ease-in-out",
+          "direction": "alternate"
+        },
+        "arm-r.u": {
+          "keyframes": "flail",
+          "duration": ".26s",
+          "easing": "ease-in-out",
+          "delay": "-.13s",
+          "direction": "alternate"
+        },
+        "arm-l.f": "none",
+        "arm-r.f": "none",
+        "tail": {"keyframes": "tail-thrash", "duration": ".3s", "easing": "ease-in-out"},
+        "ahoge": {"keyframes": "ahoge-spin", "duration": ".6s", "easing": "linear"},
+        "ear-l": {"keyframes": "ear-buzz", "duration": ".14s", "easing": "linear"},
+        "ear-r": {"keyframes": "ear-buzz", "duration": ".14s", "easing": "linear"}
+      }
+    }
+  }
+}

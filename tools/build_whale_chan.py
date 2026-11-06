@@ -3,10 +3,17 @@
 
     python3 tools/build_whale_chan.py [output.svg]
 
-The SVG is the shipped artifact; this script is only needed to change the art or poses.
+The SVG is the shipped artifact; this script is only needed to change the art or the moods.
 The art is traced in the coordinate space of reference/isolated/whalechan-art-master.webp
-and placed on the 900x1060 canvas by ART_TRANSFORM. Arm poses are solved with two-bone IK
-from hand targets (see the P table).
+and placed on the 900x1060 canvas by ART_TRANSFORM.
+
+Moods are data: moods/<name>.json (pose, expression layers, motion, theme) are compiled to
+CSS by tools/moods.mjs — the same compiler the browser editor uses — which this script runs
+through `node tools/compile_moods.mjs`. Next to the SVG it writes:
+  rig.json    the art catalog the compiler/editor need (arm geometry, rig parts + pivots,
+              pose variables, expression layer classes)
+  moods.json  the runtime mood registry (labels, speech lines, icons, themes, variants)
+Effect-layer animations, transitions and the pose-variable bindings stay here with the art.
 
 Every body part lives in its own pivot group so CSS can pose and animate it:
   .char-pose > .char-anim                      whole body (hops, stomps, sways)
@@ -14,16 +21,20 @@ Every body part lives in its own pivot group so CSS can pose and animate it:
   .head-pose > .head-anim                      head tilt (back hair + face share it)
   .arm-l/.arm-r  > .u-pose > .u-anim           shoulder joint
                  > .f-pose > .f-anim           elbow joint
+  .leg-l/.leg-r                                hip joint (dance kicks)
   .tail-pose > .tail-wag > .fluke              tail + fluke flick
   .ear-l/.ear-r, .ahoge, .lock-l/.lock-r, .brow-l/.brow-r, .iris-pose, eyelids, mouths
   .pillow > .pillow-squish                     plush the sleepy pose hugs
 """
+import json
 import math
+import re
+import subprocess
 import sys
 from pathlib import Path
 
-OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent / "assets" / "whale-chan.svg"
-CX = 303  # mirror axis used by the IK helper
+HERE = Path(__file__).resolve().parent
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE.parent / "assets" / "whale-chan.svg"
 
 
 def fmt(v):
@@ -31,34 +42,7 @@ def fmt(v):
     return s[:-2] if s.endswith(".0") else s
 
 
-def mirror_x(x):
-    return 2 * CX - x
-
-
 # ---------------------------------------------------------------- geometry
-def ik(shoulder, target, right=False, elbow_out=True):
-    """Two-bone IK in the left-arm frame (arm hangs along +y, rotate() positive swings outward)."""
-    sx, sy = shoulder
-    tx, ty = target
-    if right:
-        sx, tx = mirror_x(sx), mirror_x(tx)
-    dx, dy = tx - sx, ty - sy
-    d = max(abs(L_UPPER - L_FORE) + 1, min(math.hypot(dx, dy), L_UPPER + L_FORE - 0.5))
-    phi = math.atan2(-dx, dy)
-    a = math.acos((L_UPPER ** 2 + d * d - L_FORE ** 2) / (2 * L_UPPER * d))
-    options = []
-    for sgn in (1, -1):
-        t1 = phi + sgn * a
-        ex, ey = sx - L_UPPER * math.sin(t1), sy + L_UPPER * math.cos(t1)
-        t12 = math.atan2(-(tx - ex), ty - ey)
-        t2 = (t12 - t1 + math.pi) % (2 * math.pi) - math.pi
-        t1n = (t1 + math.pi) % (2 * math.pi) - math.pi
-        options.append((ex, math.degrees(t1n), math.degrees(t2)))
-    options.sort(key=lambda o: o[0], reverse=not elbow_out)
-    _, u, f = options[0]
-    return round(u, 1), round(f, 1)
-
-
 def cubic(p0, p1, p2, p3, t):
     mt = 1 - t
     return (
@@ -164,7 +148,8 @@ def pivot(classes, x, y, inner, mirror=False, src=None):
 # directly over the reference; ART_TRANSFORM places it on the 900 x 1060 canvas.
 MX = 303                      # vertical mirror axis of the character
 ART_SCALE = 0.92
-ART_TRANSFORM = f"translate(152,88) scale({ART_SCALE})"
+ART_OFFSET = (152, 88)
+ART_TRANSFORM = f"translate({ART_OFFSET[0]},{ART_OFFSET[1]}) scale({ART_SCALE})"
 NECK = (303, 452)
 FEET = (303, 990)
 SHOULDER_L = (236, 488)
@@ -303,29 +288,14 @@ def lock_path(center, w0, power=0.7):
     return spline(lock_geom(center, w0, power)[0], closed=True)
 
 
-# ---------------------------------------------------------------- poses
-P = {}
-P["neutral"] = dict(l=ik(SHOULDER_L, (125, 680)), r=ik(SHOULDER_R, (mx(125), 680), right=True))
-P["angry"] = dict(l=(46, 128), r=(46, 128), fist="both")
-P["smug"] = dict(l=ik(SHOULDER_L, (238, 594)), r=ik(SHOULDER_R, (mx(238), 594), right=True), fist="both")
-P["happy"] = dict(l=ik(SHOULDER_L, (150, 330)), r=ik(SHOULDER_R, (462, 316), right=True), fist="l")
-P["sad"] = dict(l=(-4, 6), r=ik(SHOULDER_R, (366, 374), right=True), fist="r")
-_think_r = ik(SHOULDER_R, (322, 440), right=True, elbow_out=False)
-
-
-def _elbow(shoulder, angle, right=False):
-    sx, sy = shoulder
-    a = math.radians(angle)
-    ex = sx + L_UPPER * math.sin(a) if right else sx - L_UPPER * math.sin(a)
-    return ex, sy + L_UPPER * math.cos(a)
-
-
-_re = _elbow(SHOULDER_R, _think_r[0], right=True)
-P["think0"] = dict(l=ik(SHOULDER_L, (_re[0] - 10, _re[1] + 8)), r=_think_r, fist="l")
-P["think1"] = dict(l=ik(SHOULDER_L, (172, 334)), r=ik(SHOULDER_R, (mx(172), 334), right=True))
-P["think2"] = dict(l=ik(SHOULDER_L, (152, 304)), r=ik(SHOULDER_R, (mx(152), 304), right=True))
-P["sleepy"] = dict(l=ik(SHOULDER_L, (262, 640)), r=ik(SHOULDER_R, (mx(262), 640), right=True))
+# ---------------------------------------------------------------- rig pivots
 PILLOW = (303, 610)            # centre of the plush she hugs while asleep
+HIP_L = (241, 790)             # leg pivots (hidden under the skirt)
+HIP_R = (366, 790)
+TAIL_PIVOT = (430, 806)
+FLUKE_PIVOT = (632, 708)
+EAR_PIVOT = (466, 320)         # right fin-ear; the left one is mirrored about MX
+AHOGE_PIVOT = (306, 104)
 
 
 # ---------------------------------------------------------------- defs
@@ -421,8 +391,8 @@ def tail():
                 f'<path d="{shine}" fill="none" stroke="#5d6aa8" stroke-width="5" stroke-linecap="round" opacity=".5"/>'
                 f'<path d="{top}" fill="none" stroke="{NAVY_LINE}" stroke-width="2.8" stroke-linecap="round"/>'
                 f'<path d="{bottom}" fill="none" stroke="{NAVY_LINE}" stroke-width="2.8" stroke-linecap="round"/>')
-    inner = pivot("fluke", 632, 708, fluke_art) + stem_art
-    return pivot("tail-pose|tail-wag", 430, 806, inner)
+    inner = pivot("fluke", *FLUKE_PIVOT, fluke_art) + stem_art
+    return pivot("tail-pose|tail-wag", *TAIL_PIVOT, inner)
 
 
 # ---------------------------------------------------------------- hair (back)
@@ -471,25 +441,26 @@ def hair_back():
 
 # ---------------------------------------------------------------- legs
 def legs():
+    """Each stocking + shoe hangs from its own hip pivot so the dance can kick it out."""
     out = ""
-    for d, shade in [("M206,780 L276,780 C276,846 272,894 270,938 L224,938 C220,894 210,846 206,780Z",
-                      "M260,820 C258,860 257,900 256,930"),
-                     ("M330,780 L402,780 C400,846 394,894 392,938 L344,938 C342,894 334,846 330,780Z",
-                      "M346,820 C348,860 350,900 352,930")]:
-        out += (f'<path d="{d}" fill="{WHITE}" stroke="{WHITE_LINE}" stroke-width="2"/>'
-                f'<path d="{shade}" fill="none" stroke="{WHITE_SH}" stroke-width="7" stroke-linecap="round"/>')
-    shoes = ""
-    for cx, buckle_side in [(247, -1), (369, 1)]:
+    for side, hip, d, shade, cx, buckle_side in [
+            ("l", HIP_L, "M206,780 L276,780 C276,846 272,894 270,938 L224,938 C220,894 210,846 206,780Z",
+             "M260,820 C258,860 257,900 256,930", 247, -1),
+            ("r", HIP_R, "M330,780 L402,780 C400,846 394,894 392,938 L344,938 C342,894 334,846 330,780Z",
+             "M346,820 C348,860 350,900 352,930", 369, 1)]:
         b = cx + buckle_side * 22
-        shoes += (f'<path d="M{cx - 26},946 C{cx - 30},972 {cx - 20},992 {cx},993 C{cx + 22},994 {cx + 31},976 {cx + 27},946 '
-                  f'C{cx + 14},956 {cx - 14},956 {cx - 26},946Z" fill="{NAVY}" stroke="{NAVY_LINE}" stroke-width="2.2" stroke-linejoin="round"/>'
-                  f'<path d="M{cx - 26},946 C{cx - 14},956 {cx + 14},956 {cx + 27},946" fill="none" stroke="#4a568e" stroke-width="1.6" opacity=".8"/>'
-                  f'<path d="M{cx - 24},934 C{cx - 10},942 {cx + 12},942 {cx + 26},934" fill="none" stroke="{NAVY}" stroke-width="6.5" stroke-linecap="round"/>'
-                  f'<path d="M{cx - 24},934 C{cx - 10},942 {cx + 12},942 {cx + 26},934" fill="none" stroke="{NAVY_LINE}" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>'
-                  f'<circle cx="{b}" cy="938" r="6.5" fill="{NAVY}" stroke="{GOLD}" stroke-width="2.8"/>'
-                  f'<path d="M{cx - 18},976 C{cx - 12},986 {cx},989 {cx + 10},987" fill="none" stroke="#6a77b4" stroke-width="3" stroke-linecap="round" opacity=".7"/>'
-                  f'<path d="M{cx - 22},984 C{cx - 12},992 {cx + 14},992 {cx + 24},982" fill="none" stroke="{NAVY_DK}" stroke-width="4" stroke-linecap="round"/>')
-    return f'<g class="legs">{out}{shoes}</g>'
+        art = (f'<path d="{d}" fill="{WHITE}" stroke="{WHITE_LINE}" stroke-width="2"/>'
+               f'<path d="{shade}" fill="none" stroke="{WHITE_SH}" stroke-width="7" stroke-linecap="round"/>'
+               f'<path d="M{cx - 26},946 C{cx - 30},972 {cx - 20},992 {cx},993 C{cx + 22},994 {cx + 31},976 {cx + 27},946 '
+               f'C{cx + 14},956 {cx - 14},956 {cx - 26},946Z" fill="{NAVY}" stroke="{NAVY_LINE}" stroke-width="2.2" stroke-linejoin="round"/>'
+               f'<path d="M{cx - 26},946 C{cx - 14},956 {cx + 14},956 {cx + 27},946" fill="none" stroke="#4a568e" stroke-width="1.6" opacity=".8"/>'
+               f'<path d="M{cx - 24},934 C{cx - 10},942 {cx + 12},942 {cx + 26},934" fill="none" stroke="{NAVY}" stroke-width="6.5" stroke-linecap="round"/>'
+               f'<path d="M{cx - 24},934 C{cx - 10},942 {cx + 12},942 {cx + 26},934" fill="none" stroke="{NAVY_LINE}" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>'
+               f'<circle cx="{b}" cy="938" r="6.5" fill="{NAVY}" stroke="{GOLD}" stroke-width="2.8"/>'
+               f'<path d="M{cx - 18},976 C{cx - 12},986 {cx},989 {cx + 10},987" fill="none" stroke="#6a77b4" stroke-width="3" stroke-linecap="round" opacity=".7"/>'
+               f'<path d="M{cx - 22},984 C{cx - 12},992 {cx + 14},992 {cx + 24},982" fill="none" stroke="{NAVY_DK}" stroke-width="4" stroke-linecap="round"/>')
+        out += pivot(f"leg leg-{side}", hip[0], hip[1], art)
+    return f'<g class="legs">{out}</g>'
 
 
 # ---------------------------------------------------------------- torso
@@ -598,10 +569,10 @@ def fin_ear(mirror):
            f'<path d="M474,300 C506,294 540,308 566,330" fill="none" stroke="#4b5794" stroke-width="3" stroke-linecap="round" opacity=".7"/>'
            f'<path d="{under}" fill="url(#g-white)" stroke="{WHITE_LINE}" stroke-width="1.8" stroke-linejoin="round"/>'
            f'<path d="M492,356 C510,354 528,352 546,350 M500,364 C516,362 532,360 548,358" fill="none" stroke="{WHITE_SH}" stroke-width="1.6" stroke-linecap="round"/>')
-    art = f'<g transform="rotate(14,466,320)">{art}</g>'
+    art = f'<g transform="rotate(14,{EAR_PIVOT[0]},{EAR_PIVOT[1]})">{art}</g>'
     if mirror:
-        return pivot("ear ear-l|ear-flap-l", mx(466), 320, art, mirror=True, src=(466, 320))
-    return pivot("ear ear-r|ear-flap-r", 466, 320, art)
+        return pivot("ear ear-l|ear-flap-l", mx(EAR_PIVOT[0]), EAR_PIVOT[1], art, mirror=True, src=EAR_PIVOT)
+    return pivot("ear ear-r|ear-flap-r", *EAR_PIVOT, art)
 
 
 def eye(cx, cy, s):
@@ -762,7 +733,7 @@ def ahoge():
     art = (f'<path d="M318,106 C346,78 350,38 322,24 C298,12 268,26 261,48 C278,36 300,34 314,46 '
            f'C328,60 322,86 302,106Z" fill="url(#g-hair-front)" stroke="{HAIR_LINE}" stroke-width="2" stroke-linejoin="round"/>'
            f'<path d="M320,32 C334,40 340,56 334,74" fill="none" stroke="#7d9ce0" stroke-width="3" stroke-linecap="round" opacity=".7"/>')
-    return pivot("ahoge|ahoge-anim", 306, 104, art)
+    return pivot("ahoge|ahoge-anim", *AHOGE_PIVOT, art)
 
 
 def face():
@@ -899,7 +870,19 @@ def body_fx():
              f'stroke-width="{fmt(3.6 * size)}" stroke-linecap="round" stroke-linejoin="round"/>')
         zzz += f'<g transform="translate({x},{y})"><g class="zz zz-{i}">{z}</g></g>'
     zzz += "</g>"
-    return smug + happy + sad + bubble + zzz
+    eighth = ('<ellipse rx="8" ry="6" transform="rotate(-22)"/><path d="M4.5,-2 L4.5,-32 L8,-32 L8,-2Z"/>'
+              '<path d="M8,-32 C14,-28 20,-22 17,-12 C16,-18 12,-21 8,-22Z"/>')
+    beamed = ('<ellipse rx="8" ry="6" transform="rotate(-22)"/><ellipse cx="22" cy="-5" rx="8" ry="6" transform="rotate(-22,22,-5)"/>'
+              '<path d="M4.5,-2 L4.5,-30 L8,-30 L8,-2Z M26.5,-7 L26.5,-35 L30,-35 L30,-7Z M4.5,-32 L30,-37 L30,-30 L4.5,-25Z"/>')
+    dance = '<g class="fx fx-dance">'
+    for i, (x, y, s, kind, col) in enumerate([(70, 340, 1.3, eighth, "#ff8aa8"), (592, 300, 1.2, beamed, "#7fd8ff"),
+                                              (40, 540, 1.1, beamed, "#ffd36b"), (624, 520, 1.25, eighth, "#ff9fbc"),
+                                              (116, 150, 1.0, beamed, "#9fe6ff"), (508, 120, 1.1, eighth, "#ffd36b")]):
+        dance += (f'<g transform="translate({x},{y}) scale({s})"><g class="note nt-{i}">'
+                  f'<g fill="#fff" stroke="#fff" stroke-width="5" stroke-linejoin="round">{kind}</g>'
+                  f'<g fill="{col}">{kind}</g></g></g>')
+    dance += "</g>"
+    return smug + happy + sad + bubble + zzz + dance
 
 
 def pillow():
@@ -928,7 +911,20 @@ def pillow():
     return f'<g class="pillow">{pivot("pillow-squish", cx, cy + 56, art)}</g>'
 
 
-def build():
+def build(moods):
+    """moods: the output of compile_moods() — {"css", "registry", "poses"}."""
+    names = [m["name"] for m in moods["registry"]]
+    default = next((m["name"] for m in moods["registry"] if m["default"]), names[0])
+    mood_list = ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1060" role="img" '
+            f'aria-labelledby="title desc" class="whale-chan" data-mood="{default}" data-strain="0">\n'
+            f'  <title id="title">Whale-chan</title>\n'
+            f'  <desc id="desc">A chibi DeepSeek whale maid drawn as rigged vector art. Her body, face, tail, '
+            f'fin-ears and ahoge are posed and animated per mood: {mood_list}.</desc>'
+            f'{DEFS}{css(moods["css"])}\n  {ART}\n</svg>\n')
+
+
+def art():
     head_back = pivot("head-pose|head-anim", NECK[0], NECK[1], hair_back())
     eyes = eye(EYE_L[0], EYE_L[1], -1) + eye(EYE_R[0], EYE_R[1], 1)
     head_front_inner = (f'{fin_ear(True)}{fin_ear(False)}{face()}{eyes}{mouths()}{front_hair()}{brows()}'
@@ -936,54 +932,149 @@ def build():
     head_front = pivot("head-pose|head-anim", NECK[0], NECK[1], head_front_inner)
     upper = (f'<g class="upper"><g class="upper-anim">{head_back}{torso()}{head_front}'
              f'{pillow()}{arm("l")}{arm("r")}</g></g>')
-    char = (f'<g transform="{ART_TRANSFORM}"><g transform="translate({FEET[0]},{FEET[1]})"><g class="char-pose"><g class="char-anim">'
+    return (f'<g transform="{ART_TRANSFORM}"><g transform="translate({FEET[0]},{FEET[1]})"><g class="char-pose"><g class="char-anim">'
             f'<g transform="translate({-FEET[0]},{-FEET[1]})">{tail()}{legs()}{upper}{body_fx()}</g></g></g></g></g>')
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1060" role="img" '
-            f'aria-labelledby="title desc" class="whale-chan" data-mood="neutral" data-strain="0">\n'
-            f'  <title id="title">Whale-chan</title>\n'
-            f'  <desc id="desc">A chibi DeepSeek whale maid drawn as rigged vector art. Her body, face, tail, '
-            f'fin-ears and ahoge are posed and animated per mood: neutral, angry, smug, happy, sad, thinking and sleepy.</desc>'
-            f'{DEFS}{css()}\n  {char}\n</svg>\n')
+
+
+ART = art()
+
+
+# ---------------------------------------------------------------- rig catalog (assets/rig.json)
+# Motion parts the mood data may animate: name -> (selector, pivot in art space, label).
+RIG_PARTS = {
+    "body": (".char-anim", FEET, "Whole body (pivots at the feet)"),
+    "upper": (".upper-anim", (0, 0), "Upper body (breathing; translate only)"),
+    "head": (".head-anim", NECK, "Head"),
+    "arm-l.u": (".arm-l .u-anim", SHOULDER_L, "Left upper arm (shoulder)"),
+    "arm-l.f": (".arm-l .f-anim", (SHOULDER_L[0], SHOULDER_L[1] + L_UPPER), "Left forearm (elbow; pivot follows the upper arm)"),
+    "arm-r.u": (".arm-r .u-anim", SHOULDER_R, "Right upper arm (shoulder)"),
+    "arm-r.f": (".arm-r .f-anim", (SHOULDER_R[0], SHOULDER_R[1] + L_UPPER), "Right forearm (elbow; pivot follows the upper arm)"),
+    "leg-l": (".leg-l", HIP_L, "Left leg (hip)"),
+    "leg-r": (".leg-r", HIP_R, "Right leg (hip)"),
+    "tail": (".tail-wag", TAIL_PIVOT, "Tail"),
+    "fluke": (".fluke", FLUKE_PIVOT, "Tail fluke"),
+    "ear-l": (".ear-flap-l", (mx(EAR_PIVOT[0]), EAR_PIVOT[1]), "Left fin-ear"),
+    "ear-r": (".ear-flap-r", EAR_PIVOT, "Right fin-ear"),
+    "ahoge": (".ahoge-anim", AHOGE_PIVOT, "Ahoge"),
+    "lock-l": (".lock-l", BANGS[0][0][0], "Left side lock"),
+    "lock-r": (".lock-r", BANGS[1][0][0], "Right side lock"),
+    "blink": (".blink", None, "Eye blink (scaleY about each eye centre)"),
+}
+# Pose variables bound in css(): name -> (default, unit, min, max, step, label).
+POSE_VARS = {
+    "hr": ("0deg", "deg", -20, 20, 0.5, "Head tilt"),
+    "hx": ("0px", "px", -20, 20, 1, "Head shift X"),
+    "hy": ("0px", "px", -20, 20, 1, "Head shift Y"),
+    "bl-r": ("0deg", "deg", -30, 30, 1, "Left brow angle"),
+    "bl-y": ("0px", "px", -12, 12, 1, "Left brow height"),
+    "br-r": ("0deg", "deg", -30, 30, 1, "Right brow angle"),
+    "br-y": ("0px", "px", -12, 12, 1, "Right brow height"),
+    "ix": ("0px", "px", -14, 14, 1, "Gaze X"),
+    "iy": ("0px", "px", -14, 14, 1, "Gaze Y"),
+    "is": ("1", "", 0.6, 1.4, 0.01, "Iris size"),
+    "ear": ("0deg", "deg", -40, 40, 1, "Fin-ears"),
+    "ahoge": ("0deg", "deg", -60, 60, 1, "Ahoge"),
+    "tail": ("0deg", "deg", -30, 30, 1, "Tail"),
+    "cy": ("0px", "px", -20, 20, 1, "Body drop"),
+    "cs": ("1", "", 0.9, 1.1, 0.005, "Body squash"),
+    "blush": (".75", "", 0, 1, 0.05, "Blush"),
+}
+# Expression layers: hidden until a mood shows them, except these, which moods may hide.
+VISIBLE_LAYERS = ["eye-open", "lash-default", "hl"]
+LAYER_FAMILIES = ["mouth", "lid", "eye-alt", "fx"]   # class="<family> <layer>"
+LAYER_GROUPS = [  # (key, label, classes that file an element under the group)
+    ("eyes", "Eyes", ["eye-open", "eye-alt"]),
+    ("lids", "Eyelids", ["lid"]),
+    ("eyeDetails", "Eye details", ["lash-default", "hl", "hl-sad", "tear-pool"]),
+    ("mouths", "Mouths", ["mouth"]),
+    ("effects", "Effects", ["fx"]),
+    ("props", "Props", ["bowl", "pillow"]),
+    ("thought", "Thought bubble", ["think-dots", "think-scribble", "qmark", "bang"]),
+]
+HIDDEN_LAYERS = [c for _, _, cs in LAYER_GROUPS for c in cs if c not in VISIBLE_LAYERS]
+LAYER_LABELS = {
+    "eye-open": "Open eyes", "eye-happy": "Happy arcs ^^", "eye-squeeze": "Squeezed > <", "eye-swirl": "Dizzy swirls",
+    "eye-sleep": "Sleeping lines", "lid-angry": "Angry lids", "lid-smug": "Smug half-lids", "lid-sad": "Sad lids",
+    "lash-default": "Default lashes", "hl": "Eye sparkle", "hl-sad": "Teary sparkle", "tear-pool": "Tear pool",
+    "m-neutral": "Neutral smile", "m-angry": "Angry shout", "m-smug": "Smug cat mouth", "m-happy": "Open smile",
+    "m-sad": "Wobbly frown", "m-think0": "Small 'o'", "m-think1": "Wavy strain", "m-think2": "Jagged panic",
+    "m-sleepy": "Snoring", "fx-angry": "Anger mark + steam", "fx-sad": "Tears, rain cloud, gloom",
+    "fx-sweat": "Sweat drop", "fx-overheat": "Overheat steam", "fx-sleepy": "Zzz + snot bubble",
+    "fx-smug": "Twinkles", "fx-happy": "Hearts + stars", "fx-think": "Thought bubble", "fx-dance": "Music notes",
+    "bowl": "Rice bowl", "pillow": "Whale plush", "think-dots": "Thinking dots", "think-scribble": "Scribble",
+    "qmark": "Question mark", "bang": "?! mark",
+}
+
+
+def layer_catalog(markup):
+    groups = {key: {"label": label, "items": {}} for key, label, _ in LAYER_GROUPS}
+    owner = {c: key for key, _, cs in LAYER_GROUPS for c in cs}
+    for attr in re.findall(r'class="([^"]+)"', markup):
+        tokens = attr.split()
+        hit = next((t for t in tokens if t in owner), None)
+        if not hit:
+            continue
+        if hit in LAYER_FAMILIES and len(tokens) < 2:
+            continue
+        layer = tokens[-1] if hit in LAYER_FAMILIES else hit
+        groups[owner[hit]]["items"].setdefault(layer, {
+            "label": LAYER_LABELS.get(layer, layer.replace("-", " ").capitalize()),
+            "default": "visible" if layer in VISIBLE_LAYERS else "hidden",
+        })
+    return groups
+
+
+def rig():
+    for part, (selector, _, _) in RIG_PARTS.items():
+        for cls in re.findall(r"\.([\w-]+)", selector):
+            assert re.search(rf'class="(?:[^"]* )?{cls}[ "]', ART), f"{part}: no .{cls} in the art"
+    return {
+        "version": 1,
+        "viewBox": [0, 0, 900, 1060],
+        "art": {"transform": ART_TRANSFORM, "offset": list(ART_OFFSET), "scale": ART_SCALE},
+        "mirrorX": MX,
+        "neck": list(NECK),
+        "feet": list(FEET),
+        "arms": {
+            "upper": L_UPPER, "fore": L_FORE,
+            "l": {"shoulder": list(SHOULDER_L), "vars": {"u": "--lu", "f": "--lf", "fist": "--lfist"}},
+            "r": {"shoulder": list(SHOULDER_R), "mirrored": True, "vars": {"u": "--ru", "f": "--rf", "fist": "--rfist"}},
+        },
+        "parts": {name: {"selector": sel, "pivot": list(pv) if pv else None, "label": label}
+                  for name, (sel, pv, label) in RIG_PARTS.items()},
+        "poseVars": {name: {"default": d, "unit": u, "min": lo, "max": hi, "step": st, "label": label}
+                     for name, (d, u, lo, hi, st, label) in POSE_VARS.items()},
+        "layers": layer_catalog(ART),
+    }
+
+
+def dump_json(obj):
+    """Indented JSON with short number lists kept on one line."""
+    text = json.dumps(obj, indent=2, ensure_ascii=False)
+    return re.sub(r"\[\s+(-?[\d.]+(?:,\s+-?[\d.]+)*)\s+\]",
+                  lambda m: "[" + ", ".join(m.group(1).replace(",", " ").split()) + "]", text) + "\n"
+
+
+def compile_moods(rig_path):
+    cmd = ["node", str(HERE / "compile_moods.mjs"), "--rig", str(rig_path)]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, cwd=HERE.parent)
+    except FileNotFoundError:
+        sys.exit("build_whale_chan: Node.js (`node`) is required to compile moods/*.json")
+    if res.returncode:
+        sys.stderr.write(res.stderr)
+        sys.exit(res.returncode)
+    return json.loads(res.stdout)
 
 
 # ---------------------------------------------------------------- CSS
-def css():
-    def arm_vars(p):
-        lu, lf = p["l"]
-        ru, rf = p["r"]
-        fist = p.get("fist", "")
-        return (f"--lu:{lu}deg;--lf:{lf}deg;--ru:{ru}deg;--rf:{rf}deg;"
-                f"--lfist:{1 if fist in ('l', 'both') else 0};--rfist:{1 if fist in ('r', 'both') else 0};")
-
-    sel = {
-        "neutral": '.whale-chan[data-mood="neutral"], .whale-chan:not([data-mood])',
-        "angry": '.whale-chan[data-mood="angry"]',
-        "smug": '.whale-chan[data-mood="smug"]',
-        "happy": '.whale-chan[data-mood="happy"]',
-        "sad": '.whale-chan[data-mood="sad"]',
-        "think0": '.whale-chan[data-mood="thinking"]',
-        "think1": '.whale-chan[data-mood="thinking"][data-strain="1"]',
-        "think2": '.whale-chan[data-mood="thinking"][data-strain="2"]',
-        "sleepy": '.whale-chan[data-mood="sleepy"]',
-    }
-    pose_vars = {
-        "neutral": "--hr:0deg;--hx:0px;--hy:0px;--bl-r:0deg;--bl-y:0px;--br-r:0deg;--br-y:0px;--ix:0px;--iy:0px;--is:1;--ear:0deg;--ahoge:0deg;--tail:0deg;--cy:0px;--cs:1;--blush:.75;",
-        "angry": "--hr:0deg;--hx:0px;--hy:6px;--bl-r:20deg;--bl-y:6px;--br-r:20deg;--br-y:6px;--ix:0px;--iy:2px;--is:.86;--ear:-18deg;--ahoge:-10deg;--tail:-6deg;--cy:0px;--cs:1;--blush:1;",
-        "smug": "--hr:-7deg;--hx:-4px;--hy:-4px;--bl-r:-6deg;--bl-y:-6px;--br-r:10deg;--br-y:2px;--ix:-7px;--iy:1px;--is:1;--ear:-8deg;--ahoge:12deg;--tail:-14deg;--cy:0px;--cs:1;--blush:.9;",
-        "happy": "--hr:4deg;--hx:0px;--hy:-4px;--bl-r:-8deg;--bl-y:-8px;--br-r:-8deg;--br-y:-8px;--ix:0px;--iy:0px;--is:1;--ear:-14deg;--ahoge:-6deg;--tail:-10deg;--cy:0px;--cs:1;--blush:1;",
-        "sad": "--hr:6deg;--hx:4px;--hy:10px;--bl-r:-20deg;--bl-y:-2px;--br-r:-20deg;--br-y:-2px;--ix:0px;--iy:5px;--is:1.04;--ear:26deg;--ahoge:48deg;--tail:20deg;--cy:6px;--cs:.98;--blush:.55;",
-        "think0": "--hr:-8deg;--hx:-4px;--hy:0px;--bl-r:-12deg;--bl-y:-8px;--br-r:12deg;--br-y:2px;--ix:8px;--iy:-9px;--is:.95;--ear:-6deg;--ahoge:24deg;--tail:6deg;--cy:0px;--cs:1;--blush:.7;",
-        "think1": "--hr:0deg;--hx:0px;--hy:4px;--bl-r:16deg;--bl-y:4px;--br-r:16deg;--br-y:4px;--ear:12deg;--ahoge:40deg;--tail:10deg;--blush:.9;",
-        "think2": "--hr:0deg;--hx:0px;--hy:2px;--bl-r:-14deg;--bl-y:-6px;--br-r:-14deg;--br-y:-6px;--ear:-20deg;--ahoge:-4deg;--tail:-4deg;--blush:1;",
-        "sleepy": "--hr:9deg;--hx:5px;--hy:12px;--bl-r:-6deg;--bl-y:3px;--br-r:-6deg;--br-y:3px;--ix:0px;--iy:0px;--is:1;--ear:22deg;--ahoge:38deg;--tail:16deg;--cy:4px;--cs:.985;--blush:.95;",
-    }
-    rules = "\n".join(f"    {sel[k]} {{ {arm_vars(P[k])}{pose_vars[k]} }}" for k in sel)
-
+def css(mood_css):
+    """Static art CSS (pose-variable bindings, layer defaults, effect loops) + the compiled mood CSS."""
+    hidden = ", ".join(f".{c}" for c in HIDDEN_LAYERS)
     return f"""
   <style><![CDATA[
     .whale-chan {{ overflow: visible; }}
     g {{ transform-box: view-box; }}
-{rules}
 
     .char-pose {{ transform: translateY(var(--cy)) scale(1, var(--cs)); transition: transform .6s cubic-bezier(.34,1.4,.64,1); }}
     .head-pose {{ transform: translate(var(--hx), var(--hy)) rotate(var(--hr)); transition: transform .55s cubic-bezier(.34,1.5,.64,1); }}
@@ -1006,105 +1097,23 @@ def css():
     .blush {{ opacity: var(--blush); transition: opacity .4s ease; }}
     .bowl {{ transform: rotate(calc(-1 * (var(--ru) + var(--rf)))); transition: transform .6s cubic-bezier(.34,1.45,.64,1), opacity .25s ease; }}
 
-    /* expression layers */
-    .mouth, .lid, .eye-alt, .fx, .bowl, .hl-sad, .tear-pool, .think-scribble, .think-dots, .qmark, .bang, .pillow {{
+    /* expression layers: moods show/hide them (opacity) */
+    {hidden} {{
       opacity: 0; transition: opacity .25s ease;
     }}
     .lash-default, .eye-open {{ transition: opacity .2s ease; }}
-    .whale-chan[data-mood="neutral"] .m-neutral, .whale-chan:not([data-mood]) .m-neutral,
-    .whale-chan[data-mood="angry"] .m-angry, .whale-chan[data-mood="angry"] .lid-angry, .whale-chan[data-mood="angry"] .fx-angry,
-    .whale-chan[data-mood="smug"] .m-smug, .whale-chan[data-mood="smug"] .lid-smug, .whale-chan[data-mood="smug"] .fx-smug,
-    .whale-chan[data-mood="happy"] .m-happy, .whale-chan[data-mood="happy"] .eye-happy, .whale-chan[data-mood="happy"] .fx-happy, .whale-chan[data-mood="happy"] .bowl,
-    .whale-chan[data-mood="sad"] .m-sad, .whale-chan[data-mood="sad"] .lid-sad, .whale-chan[data-mood="sad"] .fx-sad,
-    .whale-chan[data-mood="sad"] .hl-sad, .whale-chan[data-mood="sad"] .tear-pool,
-    .whale-chan[data-mood="thinking"] .fx-think,
-    .whale-chan[data-mood="thinking"][data-strain="0"] .m-think0, .whale-chan[data-mood="thinking"]:not([data-strain]) .m-think0,
-    .whale-chan[data-mood="thinking"][data-strain="0"] .think-dots, .whale-chan[data-mood="thinking"]:not([data-strain]) .think-dots,
-    .whale-chan[data-mood="thinking"][data-strain="0"] .qmark, .whale-chan[data-mood="thinking"]:not([data-strain]) .qmark,
-    .whale-chan[data-mood="thinking"][data-strain="1"] .m-think1, .whale-chan[data-mood="thinking"][data-strain="1"] .eye-squeeze,
-    .whale-chan[data-mood="thinking"][data-strain="1"] .think-dots, .whale-chan[data-mood="thinking"][data-strain="1"] .fx-sweat,
-    .whale-chan[data-mood="thinking"][data-strain="2"] .m-think2, .whale-chan[data-mood="thinking"][data-strain="2"] .eye-swirl,
-    .whale-chan[data-mood="thinking"][data-strain="2"] .think-scribble, .whale-chan[data-mood="thinking"][data-strain="2"] .fx-sweat,
-    .whale-chan[data-mood="thinking"][data-strain="2"] .fx-overheat, .whale-chan[data-mood="thinking"][data-strain="2"] .bang,
-    .whale-chan[data-mood="sleepy"] .m-sleepy, .whale-chan[data-mood="sleepy"] .eye-sleep,
-    .whale-chan[data-mood="sleepy"] .fx-sleepy, .whale-chan[data-mood="sleepy"] .pillow {{
-      opacity: 1;
-    }}
-    .whale-chan[data-mood="angry"] .lash-default, .whale-chan[data-mood="smug"] .lash-default, .whale-chan[data-mood="sad"] .lash-default,
-    .whale-chan[data-mood="sad"] .hl,
-    .whale-chan[data-mood="happy"] .eye-open,
-    .whale-chan[data-mood="thinking"][data-strain="1"] .eye-open, .whale-chan[data-mood="thinking"][data-strain="2"] .eye-open,
-    .whale-chan[data-mood="sleepy"] .eye-open {{
-      opacity: 0;
-    }}
 
-    /* ---------- idle motion (every mood) ---------- */
-    .blink {{ animation: blink 4.6s infinite; }}
-
-    .char-anim   {{ animation: float-bob 4.2s ease-in-out infinite; }}
-    .upper-anim  {{ animation: breathe 3.6s ease-in-out infinite; }}
-    .head-anim   {{ animation: head-idle 5.2s ease-in-out infinite; }}
-    .tail-wag    {{ animation: tail-idle 3.2s ease-in-out infinite; }}
-    .fluke       {{ animation: fluke-idle 3.2s ease-in-out -.5s infinite; }}
-    .ear-flap-l, .ear-flap-r {{ animation: ear-idle 3s ease-in-out infinite; }}
-    .ear-flap-r  {{ animation-delay: -.25s; }}
-    .ahoge-anim  {{ animation: ahoge-idle 2.6s ease-in-out infinite; }}
-    .arm-l .u-anim {{ animation: arm-idle 3.6s ease-in-out infinite; }}
-    .arm-r .u-anim {{ animation: arm-idle 3.6s ease-in-out -1.8s infinite; }}
-    .lock-l, .lock-r {{ animation: lock-sway 3.6s ease-in-out infinite; }}
-    .lock-r {{ animation-delay: -1.2s; }}
-
-    /* ---------- angry: stomping, fists pumping, tail thrashing ---------- */
-    .whale-chan[data-mood="angry"] .char-anim {{ animation: stomp .5s cubic-bezier(.3,.7,.4,1) infinite; }}
-    .whale-chan[data-mood="angry"] .head-anim {{ animation: rage-shake .16s linear infinite; }}
-    .whale-chan[data-mood="angry"] .arm-l .u-anim {{ animation: pump .5s ease-in-out infinite; }}
-    .whale-chan[data-mood="angry"] .arm-r .u-anim {{ animation: pump .5s ease-in-out -.25s infinite; }}
-    .whale-chan[data-mood="angry"] .arm .f-anim {{ animation: fist-shake .12s linear infinite; }}
-    .whale-chan[data-mood="angry"] .tail-wag {{ animation: tail-thrash .42s ease-in-out infinite; }}
-    .whale-chan[data-mood="angry"] .fluke {{ animation: fluke-thrash .42s ease-in-out -.1s infinite; }}
-    .whale-chan[data-mood="angry"] .ear-flap-l, .whale-chan[data-mood="angry"] .ear-flap-r {{ animation: ear-buzz .14s linear infinite; }}
-    .whale-chan[data-mood="angry"] .ahoge-anim {{ animation: ahoge-buzz .12s linear infinite; }}
+    /* ---------- effect layers (they only show in the moods that reveal them) ---------- */
     .anger-mark {{ animation: anger-pulse .55s ease-in-out infinite; }}
     .fx-angry .steam {{ animation: steam-puff 1.1s ease-out infinite; }}
     .fx-angry .steam-b {{ animation-delay: -.55s; }}
-
-    /* ---------- smug: hands on hips, swaying, slow proud tail swish ---------- */
-    .whale-chan[data-mood="smug"] .char-anim {{ animation: smug-sway 3s ease-in-out infinite; }}
-    .whale-chan[data-mood="smug"] .head-anim {{ animation: smug-nod 1.5s ease-in-out infinite; }}
-    .whale-chan[data-mood="smug"] .arm .u-anim {{ animation: none; }}
-    .whale-chan[data-mood="smug"] .tail-wag {{ animation: tail-swish 2.4s ease-in-out infinite; }}
-    .whale-chan[data-mood="smug"] .fluke {{ animation: fluke-idle 2.4s ease-in-out -.4s infinite; }}
-    .whale-chan[data-mood="smug"] .ahoge-anim {{ animation: ahoge-idle 1.5s ease-in-out infinite; }}
     .twinkle {{ animation: twinkle 1.8s ease-in-out infinite; }}
     .tw-1 {{ animation-delay: -.5s; }} .tw-2 {{ animation-delay: -1.1s; }} .tw-3 {{ animation-delay: -1.4s; }}
-
-    /* ---------- happy: hopping, cheering, wagging ---------- */
-    .whale-chan[data-mood="happy"] .char-anim {{ animation: hop .76s cubic-bezier(.3,.6,.4,1) infinite; }}
-    .whale-chan[data-mood="happy"] .upper-anim {{ animation: none; }}
-    .whale-chan[data-mood="happy"] .head-anim {{ animation: happy-tilt 1.52s ease-in-out infinite; }}
-    .whale-chan[data-mood="happy"] .arm-l .u-anim {{ animation: cheer .38s ease-in-out infinite alternate; }}
-    .whale-chan[data-mood="happy"] .arm-r .u-anim {{ animation: cheer .38s ease-in-out -.38s infinite alternate; }}
-    .whale-chan[data-mood="happy"] .tail-wag {{ animation: tail-wag .38s ease-in-out infinite alternate; }}
-    .whale-chan[data-mood="happy"] .fluke {{ animation: fluke-thrash .38s ease-in-out -.1s infinite; }}
-    .whale-chan[data-mood="happy"] .ear-flap-l, .whale-chan[data-mood="happy"] .ear-flap-r {{ animation: ear-flap .38s ease-in-out infinite alternate; }}
-    .whale-chan[data-mood="happy"] .ahoge-anim {{ animation: ahoge-boing .76s ease-in-out infinite; }}
     .float-up {{ animation: float-up 2.4s ease-out infinite; }}
     .fu-1 {{ animation-delay: -.4s; }} .fu-2 {{ animation-delay: -.8s; }} .fu-3 {{ animation-delay: -1.2s; }}
     .fu-4 {{ animation-delay: -1.6s; }} .fu-5 {{ animation-delay: -2s; }}
     .bowl-steam path {{ animation: wisp 1.6s ease-in-out infinite; }}
     .bowl-steam path + path {{ animation-delay: -.8s; }}
-
-    /* ---------- sad: slumped, sobbing, rubbing an eye, tail on the floor ---------- */
-    .whale-chan[data-mood="sad"] .char-anim {{ animation: none; }}
-    .whale-chan[data-mood="sad"] .upper-anim {{ animation: sob 1.1s ease-in-out infinite; }}
-    .whale-chan[data-mood="sad"] .head-anim {{ animation: sob-head 1.1s ease-in-out infinite; }}
-    .whale-chan[data-mood="sad"] .arm-l .u-anim {{ animation: limp 4s ease-in-out infinite; }}
-    .whale-chan[data-mood="sad"] .arm-r .u-anim {{ animation: none; }}
-    .whale-chan[data-mood="sad"] .arm-r .f-anim {{ animation: rub-eye .5s ease-in-out infinite alternate; }}
-    .whale-chan[data-mood="sad"] .tail-wag {{ animation: tail-idle 6s ease-in-out infinite; }}
-    .whale-chan[data-mood="sad"] .fluke {{ animation: fluke-sad 3s ease-in-out infinite; }}
-    .whale-chan[data-mood="sad"] .ear-flap-l, .whale-chan[data-mood="sad"] .ear-flap-r {{ animation: ear-idle 6s ease-in-out infinite; }}
-    .whale-chan[data-mood="sad"] .ahoge-anim {{ animation: ahoge-droop 2.2s ease-in-out infinite; }}
     .quiver {{ animation: quiver .2s linear infinite; }}
     .tear-stream {{ animation: shimmer 1.2s ease-in-out infinite; }}
     .drop {{ animation: drip 1.3s ease-in infinite; }}
@@ -1113,118 +1122,37 @@ def css():
     .rd {{ stroke: #7fb6ea; stroke-width: 3.5; stroke-linecap: round; animation: rain .9s linear infinite; }}
     .rd-1 {{ animation-delay: -.3s; }} .rd-2 {{ animation-delay: -.6s; }}
     .gloom {{ animation: gloom 2.4s ease-in-out infinite; }}
-
-    /* ---------- thinking: chin tap → temple press → overheated meltdown ---------- */
-    .whale-chan[data-mood="thinking"] .char-anim {{ animation: think-sway 3.4s ease-in-out infinite; }}
-    .whale-chan[data-mood="thinking"] .head-anim {{ animation: head-idle 3.4s ease-in-out infinite; }}
-    .whale-chan[data-mood="thinking"] .arm-l .u-anim {{ animation: none; }}
-    .whale-chan[data-mood="thinking"] .arm-r .u-anim {{ animation: none; }}
-    .whale-chan[data-mood="thinking"] .arm-r .f-anim {{ animation: chin-tap .9s ease-in-out infinite; }}
-    .whale-chan[data-mood="thinking"] .tail-wag {{ animation: tail-tap 1.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="thinking"] .ahoge-anim {{ animation: ahoge-ponder 2.2s ease-in-out infinite; }}
     .dot {{ animation: dot 1.2s ease-in-out infinite; }}
     .dot-1 {{ animation-delay: .2s; }} .dot-2 {{ animation-delay: .4s; }}
     .qmark {{ animation: q-bob 1.8s ease-in-out infinite; }}
-
-    .whale-chan[data-mood="thinking"][data-strain="1"] .char-anim {{ animation: think-sway 1.6s ease-in-out infinite; }}
-    .whale-chan[data-mood="thinking"][data-strain="1"] .head-anim {{ animation: strain-shake .3s ease-in-out infinite; }}
-    .whale-chan[data-mood="thinking"][data-strain="1"] .arm .f-anim {{ animation: temple-rub .3s ease-in-out infinite alternate; }}
-    .whale-chan[data-mood="thinking"][data-strain="1"] .dot {{ animation-duration: .6s; }}
-    .whale-chan[data-mood="thinking"][data-strain="1"] .ahoge-anim {{ animation: ahoge-buzz .3s linear infinite; }}
     .sweat {{ animation: sweat 1.4s ease-in infinite; }}
-
-    .whale-chan[data-mood="thinking"][data-strain="2"] .char-anim {{ animation: overheat .14s linear infinite; }}
-    .whale-chan[data-mood="thinking"][data-strain="2"] .head-anim {{ animation: dizzy .9s ease-in-out infinite; }}
-    .whale-chan[data-mood="thinking"][data-strain="2"] .arm-l .u-anim {{ animation: flail .26s ease-in-out infinite alternate; }}
-    .whale-chan[data-mood="thinking"][data-strain="2"] .arm-r .u-anim {{ animation: flail .26s ease-in-out -.13s infinite alternate; }}
-    .whale-chan[data-mood="thinking"][data-strain="2"] .arm .f-anim {{ animation: none; }}
-    .whale-chan[data-mood="thinking"][data-strain="2"] .tail-wag {{ animation: tail-thrash .3s ease-in-out infinite; }}
-    .whale-chan[data-mood="thinking"][data-strain="2"] .ahoge-anim {{ animation: ahoge-spin .6s linear infinite; }}
-    .whale-chan[data-mood="thinking"][data-strain="2"] .ear-flap-l, .whale-chan[data-mood="thinking"][data-strain="2"] .ear-flap-r {{ animation: ear-buzz .14s linear infinite; }}
     .swirl {{ animation: spin 1s linear infinite; }}
     .fx-overheat .steam {{ animation: steam-puff 1s ease-out infinite; }}
     .fx-overheat .steam-b {{ animation-delay: -.5s; }}
     .think-scribble {{ animation: scribble .5s steps(3) infinite; }}
     .bang {{ animation: q-bob .5s ease-in-out infinite; }}
-
-    /* ---------- sleepy: dozing on her feet, hugging a whale plush (all loops share 4.8s) ---------- */
-    .whale-chan[data-mood="sleepy"] .char-anim {{ animation: doze-sway 4.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="sleepy"] .upper-anim {{ animation: sleep-breathe 4.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="sleepy"] .head-anim {{ animation: doze-nod 4.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="sleepy"] .arm .u-anim {{ animation: hug 4.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="sleepy"] .tail-wag {{ animation: tail-lazy 4.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="sleepy"] .fluke {{ animation: fluke-idle 4.8s ease-in-out -.6s infinite; }}
-    .whale-chan[data-mood="sleepy"] .ear-flap-l, .whale-chan[data-mood="sleepy"] .ear-flap-r {{ animation: ear-idle 4.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="sleepy"] .ahoge-anim {{ animation: ahoge-doze 4.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="sleepy"] .lock-l, .whale-chan[data-mood="sleepy"] .lock-r {{ animation: lock-sway 4.8s ease-in-out infinite; }}
-    .whale-chan[data-mood="sleepy"] .blink {{ animation: none; }}
     .pillow-squish {{ animation: pillow-squish 4.8s ease-in-out infinite; }}
     .snore {{ animation: snore 4.8s ease-in-out infinite; }}
     .snot {{ animation: snot-bubble 4.8s ease-in-out infinite; }}
     .zz {{ animation: zz-float 4.8s ease-out infinite; }}
     .zz-1 {{ animation-delay: -1.6s; }} .zz-2 {{ animation-delay: -3.2s; }}
+    .note {{ animation: note-float 1.6s ease-out infinite; }}
+    .nt-1 {{ animation-delay: -.8s; }} .nt-2 {{ animation-delay: -.4s; }} .nt-3 {{ animation-delay: -1.2s; }}
+    .nt-4 {{ animation-delay: -1s; }} .nt-5 {{ animation-delay: -.2s; }}
 
-    /* ---------- keyframes ---------- */
-    @keyframes blink {{ 0%, 93%, 100% {{ transform: scaleY(1); }} 95.5% {{ transform: scaleY(.08); }} }}
-    @keyframes float-bob {{ 0%, 100% {{ transform: translateY(0); }} 50% {{ transform: translateY(-9px); }} }}
-    @keyframes breathe {{ 0%, 100% {{ transform: translateY(0); }} 50% {{ transform: translateY(-2.5px); }} }}
-    @keyframes head-idle {{ 0%, 100% {{ transform: rotate(-2deg); }} 50% {{ transform: rotate(2.5deg); }} }}
-    @keyframes tail-idle {{ 0%, 100% {{ transform: rotate(-4deg); }} 50% {{ transform: rotate(5deg); }} }}
-    @keyframes fluke-idle {{ 0%, 100% {{ transform: rotate(-6deg); }} 50% {{ transform: rotate(8deg); }} }}
-    @keyframes ear-idle {{ 0%, 100% {{ transform: rotate(0); }} 50% {{ transform: rotate(-6deg); }} }}
-    @keyframes ahoge-idle {{ 0%, 100% {{ transform: rotate(-7deg); }} 50% {{ transform: rotate(8deg); }} }}
-    @keyframes arm-idle {{ 0%, 100% {{ transform: rotate(0); }} 50% {{ transform: rotate(2.5deg); }} }}
-    @keyframes lock-sway {{ 0%, 100% {{ transform: rotate(0); }} 50% {{ transform: rotate(-1.5deg); }} }}
-
-    @keyframes stomp {{
-      0%, 100% {{ transform: translateY(0) scale(1, 1); }}
-      30% {{ transform: translateY(-12px) scale(.99, 1.02); }}
-      55% {{ transform: translateY(0) scale(1.03, .96); }}
-      70% {{ transform: translateY(0) scale(1, 1); }}
-    }}
-    @keyframes rage-shake {{ 0%, 100% {{ transform: rotate(-1.6deg) translateX(-1px); }} 50% {{ transform: rotate(1.6deg) translateX(1px); }} }}
-    @keyframes pump {{ 0%, 100% {{ transform: rotate(-14deg); }} 50% {{ transform: rotate(10deg); }} }}
-    @keyframes fist-shake {{ 0%, 100% {{ transform: rotate(-3deg); }} 50% {{ transform: rotate(3deg); }} }}
-    @keyframes tail-thrash {{ 0%, 100% {{ transform: rotate(-12deg); }} 50% {{ transform: rotate(12deg); }} }}
-    @keyframes fluke-thrash {{ 0%, 100% {{ transform: rotate(-16deg); }} 50% {{ transform: rotate(16deg); }} }}
-    @keyframes ear-buzz {{ 0%, 100% {{ transform: rotate(-4deg); }} 50% {{ transform: rotate(4deg); }} }}
-    @keyframes ahoge-buzz {{ 0%, 100% {{ transform: rotate(-5deg); }} 50% {{ transform: rotate(5deg); }} }}
     @keyframes anger-pulse {{ 0%, 100% {{ transform: scale(.85); }} 50% {{ transform: scale(1.15); }} }}
     @keyframes steam-puff {{
       0% {{ transform: translate(0, 10px) scale(.4); opacity: 0; }}
       25% {{ opacity: 1; }}
       100% {{ transform: translate(0, -46px) scale(1.25); opacity: 0; }}
     }}
-
-    @keyframes smug-sway {{ 0%, 100% {{ transform: rotate(-1.6deg); }} 50% {{ transform: rotate(1.6deg); }} }}
-    @keyframes smug-nod {{ 0%, 100% {{ transform: rotate(0) translateY(0); }} 50% {{ transform: rotate(-3deg) translateY(-3px); }} }}
-    @keyframes tail-swish {{ 0%, 100% {{ transform: rotate(-8deg); }} 50% {{ transform: rotate(8deg); }} }}
     @keyframes twinkle {{ 0%, 100% {{ transform: scale(.2) rotate(0); opacity: 0; }} 50% {{ transform: scale(1) rotate(45deg); opacity: 1; }} }}
-
-    @keyframes hop {{
-      0%, 100% {{ transform: translateY(0) scale(1.04, .95); }}
-      18% {{ transform: translateY(-14px) scale(.97, 1.04); }}
-      45% {{ transform: translateY(-40px) scale(1, 1); }}
-      78% {{ transform: translateY(0) scale(1.03, .96); }}
-    }}
-    @keyframes happy-tilt {{ 0%, 100% {{ transform: rotate(-5deg); }} 50% {{ transform: rotate(5deg); }} }}
-    @keyframes cheer {{ from {{ transform: rotate(-10deg); }} to {{ transform: rotate(12deg); }} }}
-    @keyframes tail-wag {{ from {{ transform: rotate(-14deg); }} to {{ transform: rotate(10deg); }} }}
-    @keyframes ear-flap {{ from {{ transform: rotate(-12deg); }} to {{ transform: rotate(10deg); }} }}
-    @keyframes ahoge-boing {{ 0%, 100% {{ transform: rotate(0) scaleY(1); }} 40% {{ transform: rotate(-14deg) scaleY(1.1); }} 70% {{ transform: rotate(10deg) scaleY(.92); }} }}
     @keyframes float-up {{
       0% {{ transform: translateY(20px) scale(.3) rotate(-10deg); opacity: 0; }}
       20% {{ opacity: 1; }}
       100% {{ transform: translateY(-70px) scale(1.1) rotate(14deg); opacity: 0; }}
     }}
     @keyframes wisp {{ 0%, 100% {{ transform: translateY(4px); opacity: .2; }} 50% {{ transform: translateY(-6px); opacity: .95; }} }}
-
-    @keyframes sob {{ 0%, 100% {{ transform: translateY(0); }} 20% {{ transform: translateY(3px); }} 35% {{ transform: translateY(0); }} 50% {{ transform: translateY(3px); }} }}
-    @keyframes sob-head {{ 0%, 100% {{ transform: rotate(0); }} 20% {{ transform: rotate(1.5deg) translateY(2px); }} 50% {{ transform: rotate(-1deg) translateY(2px); }} }}
-    @keyframes limp {{ 0%, 100% {{ transform: rotate(0); }} 50% {{ transform: rotate(-4deg); }} }}
-    @keyframes rub-eye {{ from {{ transform: rotate(-9deg); }} to {{ transform: rotate(7deg); }} }}
-    @keyframes fluke-sad {{ 0%, 100% {{ transform: rotate(0); }} 50% {{ transform: rotate(-5deg); }} }}
-    @keyframes ahoge-droop {{ 0%, 100% {{ transform: rotate(0); }} 50% {{ transform: rotate(6deg); }} }}
     @keyframes quiver {{ 0%, 100% {{ transform: translateY(0); }} 50% {{ transform: translateY(1px); }} }}
     @keyframes shimmer {{ 0%, 100% {{ opacity: .7; }} 50% {{ opacity: 1; }} }}
     @keyframes drip {{
@@ -1235,33 +1163,10 @@ def css():
     @keyframes cloud-bob {{ 0%, 100% {{ transform: translate(0, 0); }} 50% {{ transform: translate(6px, -4px); }} }}
     @keyframes rain {{ 0% {{ transform: translate(0, -6px); opacity: 0; }} 30% {{ opacity: 1; }} 100% {{ transform: translate(-6px, 30px); opacity: 0; }} }}
     @keyframes gloom {{ 0%, 100% {{ opacity: .35; }} 50% {{ opacity: .7; }} }}
-
-    @keyframes think-sway {{ 0%, 100% {{ transform: rotate(-1deg); }} 50% {{ transform: rotate(1deg); }} }}
-    @keyframes chin-tap {{ 0%, 60%, 100% {{ transform: rotate(0); }} 75% {{ transform: rotate(-7deg); }} }}
-    @keyframes tail-tap {{ 0%, 60%, 100% {{ transform: rotate(0); }} 75% {{ transform: rotate(-10deg); }} }}
-    @keyframes ahoge-ponder {{ 0%, 100% {{ transform: rotate(-8deg); }} 50% {{ transform: rotate(8deg); }} }}
     @keyframes dot {{ 0%, 100% {{ transform: translateY(0); opacity: .35; }} 40% {{ transform: translateY(-6px); opacity: 1; }} }}
     @keyframes q-bob {{ 0%, 100% {{ transform: translateY(0) rotate(-8deg); }} 50% {{ transform: translateY(-8px) rotate(8deg); }} }}
-    @keyframes strain-shake {{ 0%, 100% {{ transform: rotate(-1deg); }} 50% {{ transform: rotate(1deg); }} }}
-    @keyframes temple-rub {{ from {{ transform: rotate(-6deg); }} to {{ transform: rotate(6deg); }} }}
     @keyframes sweat {{ 0% {{ transform: translateY(-6px); opacity: 0; }} 25% {{ opacity: 1; }} 100% {{ transform: translateY(26px); opacity: 0; }} }}
-    @keyframes overheat {{ 0%, 100% {{ transform: translateX(-1.5px); }} 50% {{ transform: translateX(1.5px); }} }}
-    @keyframes dizzy {{ 0%, 100% {{ transform: rotate(-6deg); }} 50% {{ transform: rotate(6deg); }} }}
-    @keyframes flail {{ from {{ transform: rotate(-16deg); }} to {{ transform: rotate(14deg); }} }}
-    @keyframes ahoge-spin {{ from {{ transform: rotate(0); }} to {{ transform: rotate(360deg); }} }}
     @keyframes spin {{ from {{ transform: rotate(0); }} to {{ transform: rotate(360deg); }} }}
-    @keyframes doze-sway {{ 0%, 100% {{ transform: rotate(-1deg) translateY(0); }} 50% {{ transform: rotate(1.2deg) translateY(2px); }} }}
-    @keyframes sleep-breathe {{ 0%, 100% {{ transform: translateY(0); }} 45% {{ transform: translateY(-4px); }} }}
-    @keyframes doze-nod {{
-      0%, 100% {{ transform: rotate(0) translateY(0); }}
-      62% {{ transform: rotate(5deg) translateY(4px); }}
-      72% {{ transform: rotate(6.5deg) translateY(6px); }}
-      78% {{ transform: rotate(-2deg) translateY(-3px); }}
-      86% {{ transform: rotate(.6deg) translateY(0); }}
-    }}
-    @keyframes hug {{ 0%, 100% {{ transform: rotate(0); }} 45% {{ transform: rotate(-1.5deg); }} }}
-    @keyframes tail-lazy {{ 0%, 100% {{ transform: rotate(-2deg); }} 50% {{ transform: rotate(3deg); }} }}
-    @keyframes ahoge-doze {{ 0%, 100% {{ transform: rotate(0); }} 62% {{ transform: rotate(9deg); }} 78% {{ transform: rotate(-6deg); }} }}
     @keyframes pillow-squish {{ 0%, 100% {{ transform: scale(1, 1); }} 45% {{ transform: scale(1.025, .965); }} }}
     @keyframes snore {{ 0%, 100% {{ transform: scale(.8, .65); }} 45% {{ transform: scale(1, 1.15); }} }}
     @keyframes snot-bubble {{
@@ -1275,6 +1180,16 @@ def css():
       100% {{ transform: translate(64px, -118px) scale(1.15) rotate(10deg); opacity: 0; }}
     }}
     @keyframes scribble {{ 0% {{ transform: rotate(0); }} 33% {{ transform: rotate(8deg) scale(1.05); }} 66% {{ transform: rotate(-6deg) scale(.95); }} }}
+    @keyframes note-float {{
+      0% {{ transform: translate(0, 16px) scale(.4) rotate(-14deg); opacity: 0; }}
+      20% {{ opacity: 1; }}
+      50% {{ transform: translate(8px, -28px) scale(1) rotate(10deg); }}
+      100% {{ transform: translate(-4px, -72px) scale(1.1) rotate(-8deg); opacity: 0; }}
+    }}
+
+    /* moods:begin (replaced live by the mood editor) */
+{mood_css}
+    /* moods:end */
 
     /* ---------- pause while dragging, honour reduced motion ---------- */
     .is-paused * {{ animation-play-state: paused !important; }}
@@ -1285,10 +1200,13 @@ def css():
   ]]></style>"""
 
 
-
-
 if __name__ == "__main__":
-    OUT.write_text(build())
-    print(f"wrote {OUT}")
-    for name, pose in P.items():
-        print(f"  {name:8s} left arm {pose['l']}  right arm {pose['r']}")
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    rig_path = OUT.parent / "rig.json"
+    rig_path.write_text(dump_json(rig()))
+    moods = compile_moods(rig_path)
+    (OUT.parent / "moods.json").write_text(dump_json(moods["registry"]))
+    OUT.write_text(build(moods))
+    print(f"wrote {OUT}, {rig_path.name}, moods.json")
+    for name, pose in moods["poses"].items():
+        print(f"  {name:10s} left arm {tuple(pose['l'])}  right arm {tuple(pose['r'])}  fist {pose['fist']}")

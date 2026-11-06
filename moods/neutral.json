@@ -1,0 +1,57 @@
+{
+  "name": "neutral",
+  "order": 10,
+  "default": true,
+  "meta": {
+    "label": "Neutral",
+    "line": "Back to standby. Very professional.",
+    "button": false,
+    "icon": null,
+    "slow": false,
+    "theme": {
+      "accent": "#347fdb",
+      "accentDeep": "#1954a3",
+      "accentSoft": "rgba(52, 127, 219, 0.12)",
+      "button": null,
+      "bubble": "#55bdf7",
+      "aura": {
+        "stops": [
+          "rgba(128, 225, 255, .34) 0%",
+          "rgba(90, 186, 255, .19) 33%",
+          "rgba(90, 186, 255, .06) 56%",
+          "rgba(90, 186, 255, 0) 72%"
+        ],
+        "duration": "6.5s"
+      },
+      "floorShadow": {
+        "stops": ["rgba(18, 48, 92, .25) 0%", "rgba(18, 48, 92, .11) 46%", "rgba(18, 48, 92, 0) 76%"],
+        "animation": "shadow-breathe 5.2s ease-in-out infinite",
+        "width": "47%"
+      },
+      "desktopAccent": [0.333, 0.741, 0.969],
+      "desktopGlow": [0.5, 0.88, 1.0]
+    }
+  },
+  "pose": {
+    "arms": {"l": {"hand": [125, 680]}, "r": {"hand": [481, 680]}, "fist": "none"},
+    "vars": {
+      "hr": "0deg",
+      "hx": "0px",
+      "hy": "0px",
+      "bl-r": "0deg",
+      "bl-y": "0px",
+      "br-r": "0deg",
+      "br-y": "0px",
+      "ix": "0px",
+      "iy": "0px",
+      "is": "1",
+      "ear": "0deg",
+      "ahoge": "0deg",
+      "tail": "0deg",
+      "cy": "0px",
+      "cs": "1",
+      "blush": ".75"
+    }
+  },
+  "layers": {"show": ["m-neutral"]}
+}

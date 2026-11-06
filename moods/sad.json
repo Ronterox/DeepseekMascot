@@ -1,0 +1,69 @@
+{
+  "name": "sad",
+  "order": 50,
+  "meta": {
+    "label": "Sad",
+    "line": "I'm not crying. My face is just leaking.",
+    "button": true,
+    "icon": "<path d=\"M12 3.2c3.2 5.2 5.1 7.4 5.1 10.4a5.1 5.1 0 1 1-10.2 0c0-3 1.9-5.2 5.1-10.4Z\"/><path d=\"M9.5 14.5c.7 1.2 1.5 1.8 2.5 1.8s1.8-.6 2.5-1.8\"/>",
+    "slow": false,
+    "theme": {
+      "accent": "#6688d4",
+      "accentDeep": "#4262aa",
+      "accentSoft": "rgba(102, 136, 212, 0.12)",
+      "button": "#5f82ce",
+      "bubble": "#5e8fd8",
+      "aura": {
+        "stops": [
+          "rgba(146, 188, 255, .26) 0%",
+          "rgba(90, 137, 209, .12) 36%",
+          "rgba(90, 137, 209, .03) 58%",
+          "rgba(90, 137, 209, 0) 72%"
+        ],
+        "duration": "6.5s"
+      },
+      "floorShadow": {
+        "stops": ["rgba(71, 106, 155, .2) 0%", "rgba(71, 106, 155, .07) 46%", "rgba(71, 106, 155, 0) 76%"],
+        "animation": "shadow-sob 3.8s ease-in-out infinite",
+        "width": "58%"
+      },
+      "desktopAccent": [0.369, 0.561, 0.847],
+      "desktopGlow": [0.57, 0.74, 1.0]
+    }
+  },
+  "pose": {
+    "arms": {"l": {"angles": [-4, 6]}, "r": {"hand": [366, 374]}, "fist": "r"},
+    "vars": {
+      "hr": "6deg",
+      "hx": "4px",
+      "hy": "10px",
+      "bl-r": "-20deg",
+      "bl-y": "-2px",
+      "br-r": "-20deg",
+      "br-y": "-2px",
+      "ix": "0px",
+      "iy": "5px",
+      "is": "1.04",
+      "ear": "26deg",
+      "ahoge": "48deg",
+      "tail": "20deg",
+      "cy": "6px",
+      "cs": ".98",
+      "blush": ".55"
+    }
+  },
+  "layers": {"show": ["m-sad", "lid-sad", "fx-sad", "hl-sad", "tear-pool"], "hide": ["lash-default", "hl"]},
+  "motion": {
+    "body": "none",
+    "upper": {"keyframes": "sob", "duration": "1.1s", "easing": "ease-in-out"},
+    "head": {"keyframes": "sob-head", "duration": "1.1s", "easing": "ease-in-out"},
+    "arm-l.u": {"keyframes": "limp", "duration": "4s", "easing": "ease-in-out"},
+    "arm-r.u": "none",
+    "arm-r.f": {"keyframes": "rub-eye", "duration": ".5s", "easing": "ease-in-out", "direction": "alternate"},
+    "tail": {"keyframes": "tail-idle", "duration": "6s", "easing": "ease-in-out"},
+    "fluke": {"keyframes": "fluke-sad", "duration": "3s", "easing": "ease-in-out"},
+    "ear-l": {"keyframes": "ear-idle", "duration": "6s", "easing": "ease-in-out"},
+    "ear-r": {"keyframes": "ear-idle", "duration": "6s", "easing": "ease-in-out"},
+    "ahoge": {"keyframes": "ahoge-droop", "duration": "2.2s", "easing": "ease-in-out"}
+  }
+}
