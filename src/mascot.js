@@ -31,16 +31,81 @@
   const GREETING =
     "Hi, I'm Whale-chan. Drag me anywhere—I'm portable and only slightly hungry.";
 
-  const MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking", "sleepy"];
-  const MOOD_LINES = {
-    neutral: "Back to standby. Very professional.",
-    angry: "I'm not angry. I'm aggressively recalibrating.",
-    smug: "Oh, you want an explanation? Adorable.",
-    happy: "I did it! The rice is still warm. Double win.",
-    sad: "I'm not crying. My face is just leaking.",
-    thinking: "Think. Think. The answer is in here somewhere.",
-    sleepy: "Zzz… five more minutes… the rice can wait…"
+  // Used when assets/moods.json can't be loaded; the base styles below are neutral's theme.
+  const FALLBACK_MOODS = [
+    { name: "neutral", label: "Neutral", line: "Back to standby. Very professional.", default: true, variants: [] }
+  ];
+  const MOOD_NAME = /^[a-z0-9-]+$/;
+  const STRAIN_DELAYS = [2800, 6800];
+  const registries = new Map();
+
+  const loadRegistry = (url) => {
+    if (!registries.has(url)) {
+      registries.set(url, fetch(url)
+        .then((response) => {
+          if (!response.ok) throw new Error(`${response.status} ${url}`);
+          return response.json();
+        })
+        .then((data) => {
+          const moods = Array.isArray(data)
+            ? data.filter((mood) => mood && typeof mood.name === "string" && MOOD_NAME.test(mood.name))
+            : [];
+          if (!moods.length) throw new Error(`no moods in ${url}`);
+          return moods;
+        })
+        .catch((error) => {
+          console.warn(`deepseek-mascot: using the fallback mood list (${error.message})`);
+          return null;
+        }));
+    }
+    return registries.get(url);
   };
+
+  const declarations = (props) => Object.entries(props)
+    .filter(([, value]) => value != null && value !== "")
+    .map(([prop, value]) => `${prop}: ${value};`)
+    .join(" ");
+
+  const rule = (selector, props) => {
+    const body = declarations(props);
+    return body ? `${selector} { ${body} }` : "";
+  };
+
+  const auraProps = (aura) => aura ? {
+    background: Array.isArray(aura.stops) && aura.stops.length
+      ? `radial-gradient(circle at 50% 48%, ${aura.stops.join(", ")})`
+      : null,
+    "animation-duration": aura.duration
+  } : {};
+
+  const shadowProps = (shadow) => shadow ? {
+    width: shadow.width,
+    background: Array.isArray(shadow.stops) && shadow.stops.length
+      ? `radial-gradient(ellipse at center, ${shadow.stops.join(", ")})`
+      : null,
+    animation: shadow.animation
+  } : {};
+
+  // The default mood's theme replaces the base rules (same specificity, so
+  // state rules like .is-fed .aura still win); other moods override per mood.
+  const moodThemeCss = (moods) => moods.flatMap((mood) => {
+    const theme = mood.theme || {};
+    const scope = mood.default ? "" : `.rig[data-mood="${mood.name}"] `;
+    const rules = [
+      rule(mood.default ? ".rig" : scope.trim(), { "--bubble-accent": theme.bubble }),
+      rule(`${scope}.aura`, auraProps(theme.aura)),
+      rule(`${scope}.floor-shadow`, shadowProps(theme.floorShadow))
+    ];
+    Object.entries(theme.variants || {}).forEach(([strain, variant]) => {
+      const root = `.rig[data-mood="${mood.name}"][data-strain="${strain}"]`;
+      rules.push(
+        rule(root, { "--bubble-accent": variant?.bubble }),
+        rule(`${root} .aura`, auraProps(variant?.aura)),
+        rule(`${root} .floor-shadow`, shadowProps(variant?.floorShadow))
+      );
+    });
+    return rules;
+  }).filter(Boolean).join("\n");
 
   const template = document.createElement("template");
   template.innerHTML = `
@@ -370,99 +435,6 @@
         }
       }
 
-      .rig[data-mood="angry"] { --bubble-accent: #ff6a5f; }
-      .rig[data-mood="smug"] { --bubble-accent: #e7b453; }
-      .rig[data-mood="happy"] { --bubble-accent: #2e9fe0; }
-      .rig[data-mood="sad"] { --bubble-accent: #5e8fd8; }
-      .rig[data-mood="thinking"] { --bubble-accent: #45b9dd; }
-      .rig[data-mood="sleepy"] { --bubble-accent: #8b7ad9; }
-
-      .rig[data-mood="angry"] .aura {
-        background: radial-gradient(circle at 50% 48%,
-          rgba(255, 122, 108, .32) 0%,
-          rgba(255, 85, 70, .16) 36%,
-          rgba(255, 85, 70, .04) 58%,
-          rgba(255, 85, 70, 0) 72%);
-        animation-duration: 1.8s;
-      }
-      .rig[data-mood="smug"] .aura {
-        background: radial-gradient(circle at 50% 48%,
-          rgba(255, 226, 148, .3) 0%,
-          rgba(243, 190, 88, .14) 36%,
-          rgba(243, 190, 88, .04) 58%,
-          rgba(243, 190, 88, 0) 72%);
-        animation-duration: 5s;
-      }
-      .rig[data-mood="happy"] .aura {
-        background: radial-gradient(circle at 50% 48%,
-          rgba(160, 243, 255, .38) 0%,
-          rgba(79, 204, 255, .17) 36%,
-          rgba(79, 204, 255, .04) 58%,
-          rgba(79, 204, 255, 0) 72%);
-        animation-duration: 3.4s;
-      }
-      .rig[data-mood="sad"] .aura {
-        background: radial-gradient(circle at 50% 48%,
-          rgba(146, 188, 255, .26) 0%,
-          rgba(90, 137, 209, .12) 36%,
-          rgba(90, 137, 209, .03) 58%,
-          rgba(90, 137, 209, 0) 72%);
-        animation-duration: 6.5s;
-      }
-      .rig[data-mood="thinking"] .aura {
-        background: radial-gradient(circle at 50% 48%,
-          rgba(126, 230, 247, .32) 0%,
-          rgba(68, 178, 210, .13) 36%,
-          rgba(68, 178, 210, .03) 58%,
-          rgba(68, 178, 210, 0) 72%);
-        animation-duration: 4.8s;
-      }
-
-      .rig[data-mood="sleepy"] .aura {
-        background: radial-gradient(circle at 50% 48%,
-          rgba(190, 172, 255, .3) 0%,
-          rgba(139, 122, 217, .13) 36%,
-          rgba(139, 122, 217, .03) 58%,
-          rgba(139, 122, 217, 0) 72%);
-        animation-duration: 4.8s;
-      }
-
-      .rig[data-mood="angry"] .floor-shadow {
-        background: radial-gradient(ellipse at center,
-          rgba(159, 44, 42, .22) 0%,
-          rgba(159, 44, 42, .08) 48%,
-          rgba(159, 44, 42, 0) 78%);
-        animation: shadow-vibrate .19s linear infinite;
-      }
-      .rig[data-mood="happy"] .floor-shadow {
-        background: radial-gradient(ellipse at center,
-          rgba(34, 129, 188, .2) 0%,
-          rgba(34, 129, 188, .07) 48%,
-          rgba(34, 129, 188, 0) 78%);
-        animation: shadow-hop 1.15s cubic-bezier(.3,.75,.4,1) infinite;
-      }
-      .rig[data-mood="sad"] .floor-shadow {
-        width: 58%;
-        background: radial-gradient(ellipse at center,
-          rgba(71, 106, 155, .2) 0%,
-          rgba(71, 106, 155, .07) 46%,
-          rgba(71, 106, 155, 0) 76%);
-        animation: shadow-sob 3.8s ease-in-out infinite;
-      }
-      .rig[data-mood="smug"] .floor-shadow {
-        background: radial-gradient(ellipse at center,
-          rgba(115, 92, 40, .18) 0%,
-          rgba(115, 92, 40, .06) 48%,
-          rgba(115, 92, 40, 0) 78%);
-      }
-      .rig[data-mood="thinking"] .floor-shadow {
-        background: radial-gradient(ellipse at center,
-          rgba(55, 125, 155, .18) 0%,
-          rgba(55, 125, 155, .06) 48%,
-          rgba(55, 125, 155, 0) 78%);
-      }
-      .rig[data-strain="2"] .floor-shadow { animation: shadow-vibrate .21s linear infinite; }
-
       @keyframes shadow-vibrate {
         0%, 100% { transform: translateX(-50%) translateX(0); opacity: .8; }
         25% { transform: translateX(-50%) translateX(-2px); opacity: 1; }
@@ -501,6 +473,7 @@
         .rice-grain { display: none; }
       }
     </style>
+    <style class="mood-theme"></style>
 
     <div class="rig">
       <div class="bubble" role="status" aria-live="polite" aria-atomic="true">
@@ -527,6 +500,12 @@
       this._bubble = this.shadowRoot.querySelector(".bubble");
       this._bubbleText = this.shadowRoot.querySelector(".bubble-text");
       this._object = this.shadowRoot.querySelector(".art");
+      this._themeStyle = this.shadowRoot.querySelector(".mood-theme");
+      this._registry = FALLBACK_MOODS;
+      this._registryReady = false;
+      this._registryLoaded = false;
+      this._pendingMood = null;
+      this._moodsReady = new Promise((resolve) => { this._resolveMoods = resolve; });
       this._position = { x: 0, y: 0 };
       this._size = { w: 0, h: 0 };
       this._drag = null;
@@ -540,12 +519,12 @@
       this._moved = false;
       this._suppressClick = false;
       this._positioned = false;
-      this._mood = "neutral";
+      this._mood = this._defaultMood();
       this._strain = 0;
       this._thinkTimers = [];
-      this._rig.dataset.mood = "neutral";
+      this._rig.dataset.mood = this._mood;
       this._rig.dataset.strain = "0";
-      this.dataset.mood = "neutral";
+      this.dataset.mood = this._mood;
       this._viewport = this._viewportSize();
       this._motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
       this._onPointerDown = this._onPointerDown.bind(this);
@@ -566,10 +545,12 @@
           "Whale-chan, a floating DeepSeek whale maid. Drag her anywhere. Press Enter to hear a line."
         );
         this._object.addEventListener("load", this._onObjectLoad);
-        this._object.setAttribute(
-          "data",
-          this.getAttribute("src") || new URL("assets/whale-chan.svg", document.baseURI).href
-        );
+        const svgUrl = new URL(this.getAttribute("src") || "assets/whale-chan.svg", document.baseURI).href;
+        this._object.setAttribute("data", svgUrl);
+        const moodsAttr = this.getAttribute("moods");
+        this._loadMoods(moodsAttr
+          ? new URL(moodsAttr, document.baseURI).href
+          : new URL("moods.json", svgUrl).href);
         this._motionQuery.addEventListener?.("change", this._onMotionChange);
 
         this._button.addEventListener("pointerdown", this._onPointerDown);
@@ -595,7 +576,7 @@
           this._syncMotionPreference();
           let seenHint = false;
           try { seenHint = Boolean(sessionStorage.getItem(SEEN_HINT_KEY)); } catch (error) {}
-          if (!seenHint && this._mood === "neutral") {
+          if (!seenHint && !this._pendingMood && this._mood === this._defaultMood()) {
             this._hintTimer = window.setTimeout(() => {
               this.say(GREETING, 7200);
               try { sessionStorage.setItem(SEEN_HINT_KEY, "1"); } catch (error) {}
@@ -847,8 +828,50 @@
       this._thinkTimers = [];
     }
 
+    get moods() {
+      return this._registry;
+    }
+
+    get moodsReady() {
+      return this._moodsReady;
+    }
+
+    _loadMoods(url) {
+      loadRegistry(url).then((moods) => {
+        this._registryLoaded = Boolean(moods);
+        this._registry = moods || FALLBACK_MOODS;
+        this._registryReady = true;
+        this._themeStyle.textContent = moodThemeCss(this._registry);
+        const pending = this._pendingMood;
+        this._pendingMood = null;
+        if (pending) this.setMood(pending.mood, pending.options);
+        else if (!this._findMood(this._mood)) this.setMood(this._defaultMood(), { announce: false });
+        this._resolveMoods(this._registry);
+      });
+    }
+
+    _findMood(name) {
+      return this._registry.find((mood) => mood.name === name);
+    }
+
+    _defaultMood() {
+      return (this._registry.find((mood) => mood.default) || this._registry[0]).name;
+    }
+
+    _resolveMood(mood) {
+      if (this._findMood(mood)) return mood;
+      // Without a registry, trust any well-formed name: the SVG carries the mood styles.
+      if (!this._registryLoaded && typeof mood === "string" && MOOD_NAME.test(mood)) return mood;
+      return this._defaultMood();
+    }
+
+    _maxStrain() {
+      const variants = this._findMood(this._mood)?.variants || [];
+      return Math.max(0, ...variants.map(Number).filter(Number.isInteger));
+    }
+
     _setStrain(strain) {
-      const next = Math.max(0, Math.min(2, Number(strain) || 0));
+      const next = Math.max(0, Math.min(this._maxStrain(), Number(strain) || 0));
       this._strain = next;
       this._rig.dataset.strain = String(next);
       this._applySvgMood();
@@ -859,8 +882,13 @@
       }));
     }
 
-    setMood(mood = "neutral", options = {}) {
-      const next = MOODS.includes(mood) ? mood : "neutral";
+    setMood(mood, options = {}) {
+      if (!this._registryReady) {
+        // Applied once assets/moods.json has loaded (or failed to).
+        this._pendingMood = { mood, options };
+        return mood ?? this._defaultMood();
+      }
+      const next = this._resolveMood(mood ?? this._defaultMood());
       this._clearThinkTimers();
       this._mood = next;
       this._strain = 0;
@@ -869,17 +897,20 @@
       this._rig.dataset.strain = "0";
       this._applySvgMood();
 
-      if (next === "thinking") {
+      // Moods with strain variants escalate through them (thinking: chin tap, then overthinking).
+      const strains = STRAIN_DELAYS.slice(0, this._maxStrain());
+      if (strains.length) {
         if (this._motionQuery.matches) {
           this._setStrain(1);
         } else {
-          this._thinkTimers.push(window.setTimeout(() => this._setStrain(1), 2800));
-          this._thinkTimers.push(window.setTimeout(() => this._setStrain(2), 6800));
+          strains.forEach((delay, index) => {
+            this._thinkTimers.push(window.setTimeout(() => this._setStrain(index + 1), delay));
+          });
         }
       }
 
       if (options.announce !== false) {
-        this.say(MOOD_LINES[next] || MOOD_LINES.neutral);
+        this.say(this._findMood(next)?.line || this._findMood(this._defaultMood())?.line);
       }
 
       this.dispatchEvent(new CustomEvent("whale-mood", {

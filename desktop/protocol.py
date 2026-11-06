@@ -7,11 +7,39 @@ or a plain-text line, e.g. `say Build passed` or `react success`.
 This module must stay free of GTK imports so the CLI starts instantly.
 """
 
+import json
 import os
+import re
 import shlex
 from pathlib import Path
 
-MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking", "sleepy"]
+REGISTRY_PATH = Path(__file__).resolve().parent.parent / "assets" / "moods.json"
+# Used when assets/moods.json is missing or unreadable.
+FALLBACK_MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking", "sleepy", "dance"]
+
+
+def load_moods(path=REGISTRY_PATH):
+    """The mood registry built by tools/build_whale_chan.py: an ordered list of dicts."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    if not isinstance(data, list):
+        data = []
+    moods = [m for m in data if isinstance(m, dict) and re.fullmatch(r"[a-z0-9-]+", str(m.get("name", "")))]
+    if not moods:
+        moods = [{"name": name, "default": name == "neutral", "slow": name == "sleepy",
+                  "variants": ["0", "1", "2"] if name == "thinking" else []} for name in FALLBACK_MOODS]
+    return moods
+
+
+def strains(mood):
+    """Strain levels above 0 that a registry mood has variants for (thinking: [1, 2])."""
+    return sorted(int(v) for v in mood.get("variants") or [] if str(v).isdigit() and int(v) > 0)
+
+
+MOOD_REGISTRY = load_moods()
+MOODS = [m["name"] for m in MOOD_REGISTRY]
 EVENTS = {
     # event: (mood, seconds before returning to neutral or None)
     "working": ("thinking", None),

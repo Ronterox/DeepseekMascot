@@ -13,13 +13,6 @@
   --mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", "Courier New", monospace;
 }
 
-html[data-mood="angry"] { --accent: #d95a4e; --accent-deep: #9f392f; --accent-soft: rgba(217, 90, 78, 0.12); }
-html[data-mood="smug"] { --accent: #c19138; --accent-deep: #8c6420; --accent-soft: rgba(193, 145, 56, 0.13); }
-html[data-mood="happy"] { --accent: #269ad4; --accent-deep: #116b99; --accent-soft: rgba(38, 154, 212, 0.12); }
-html[data-mood="sad"] { --accent: #6688d4; --accent-deep: #4262aa; --accent-soft: rgba(102, 136, 212, 0.12); }
-html[data-mood="thinking"] { --accent: #3ea5bb; --accent-deep: #267d8f; --accent-soft: rgba(62, 165, 187, 0.12); }
-html[data-mood="sleepy"] { --accent: #8170cf; --accent-deep: #5a4aa6; --accent-soft: rgba(129, 112, 207, 0.12); }
-
 * { box-sizing: border-box; }
 
 html,
@@ -461,11 +454,12 @@ button { font: inherit; }
 .mood-buttons {
   display: grid;
   flex: 1;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--mood-count, 6), minmax(0, 1fr));
   gap: 6px;
 }
 
 .mood-btn {
+  --btn: var(--ink-soft);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -486,13 +480,6 @@ button { font: inherit; }
     box-shadow 180ms ease,
     transform 180ms ease;
 }
-
-.mood-angry { --btn: #d95a4e; }
-.mood-smug { --btn: #b7862e; }
-.mood-happy { --btn: #218fc6; }
-.mood-sad { --btn: #5f82ce; }
-.mood-thinking { --btn: #3999ae; }
-.mood-sleepy { --btn: #7666c4; }
 
 .mood-btn:hover {
   background: color-mix(in srgb, var(--btn) 7%, transparent);

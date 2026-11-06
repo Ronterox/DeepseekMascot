@@ -32,6 +32,8 @@ gi.require_version("WebKit2", "4.0")
 from gi.repository import Gdk, GLib, Gtk, WebKit2  # noqa: E402
 import cairo  # noqa: E402
 
+from protocol import MOOD_REGISTRY, strains  # noqa: E402
+
 BAKE_VERSION = 3
 MASK_EVERY = 4      # sample every Nth frame for the click mask
 MASK_GROW = 3       # px of slack around the silhouette
@@ -55,18 +57,26 @@ GAZE = {
     "look-ul": {"--ix": "-8px", "--iy": "-11px", "--hr": "-3deg", "--hx": "-2px", "--hy": "-4px"},
     "look-ur": {"--ix": "8px", "--iy": "-11px", "--hr": "3deg", "--hx": "2px", "--hy": "-4px"},
 }
-STATES = [
-    state("neutral", "neutral"),
-    state("angry", "angry"),
-    state("smug", "smug"),
-    state("happy", "happy"),
-    state("sad", "sad"),
-    state("thinking", "thinking"),
-    state("thinking-1", "thinking", 1),
-    state("thinking-2", "thinking", 2),
-    *[state(f"neutral-{name}", "neutral", vars=v, sync="neutral") for name, v in GAZE.items()],
-    state("sleepy", "sleepy"),
-]
+# The gaze variants keep their historical place in the bake order (after this
+# state, or after neutral if it is gone).
+GAZE_AFTER = "thinking-2"
+
+
+def build_states(moods):
+    """Every registry mood (assets/moods.json) plus its strain variants, and the gaze variants."""
+    states = []
+    for mood in moods:
+        name = mood["name"]
+        states.append(state(name, name))
+        states.extend(state(f"{name}-{level}", name, level) for level in strains(mood))
+    names = [st["name"] for st in states]
+    if "neutral" in names:
+        at = names.index(GAZE_AFTER if GAZE_AFTER in names else "neutral") + 1
+        states[at:at] = [state(f"neutral-{name}", "neutral", vars=v, sync="neutral") for name, v in GAZE.items()]
+    return states
+
+
+STATES = build_states(MOOD_REGISTRY)
 # Extra rules for states that need more than variables (none at the moment).
 STATE_CSS = ""
 VIEWBOX = (900, 1060)

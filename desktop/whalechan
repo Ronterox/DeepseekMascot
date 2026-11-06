@@ -3,7 +3,7 @@
 
   whalechan start                      launch her (no-op if already running)
   whalechan say "Build passed" -m happy
-  whalechan mood thinking              moods: neutral angry smug happy sad thinking
+  whalechan mood thinking              moods: {moods}
   whalechan react success              events: working success failure error attention idle
   whalechan run -- make test           thinking while it runs, then happy or sad
   whalechan feed | show | hide | toggle | home | sleep | wake | status | quit
@@ -141,7 +141,8 @@ def run_command(argv, quiet_lines):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="whalechan", description=__doc__.split("\n\n")[0],
-        epilog=__doc__.split("\n\n", 1)[1], formatter_class=argparse.RawDescriptionHelpFormatter)
+        epilog=__doc__.split("\n\n", 1)[1].replace("{moods}", " ".join(MOODS)),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("-q", "--quiet", action="store_true",
                         help="if she isn't running, exit 0 without a message (for hooks)")
     parser.add_argument("--json", action="store_true", help="print the raw JSON reply")

@@ -31,7 +31,7 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 import cairo  # noqa: E402
 
-from protocol import EVENTS, MOODS, normalize_event, parse_plain, socket_path  # noqa: E402
+from protocol import EVENTS, MOOD_REGISTRY, MOODS, normalize_event, parse_plain, socket_path, strains  # noqa: E402
 
 try:
     from x11watch import X11Watch  # noqa: E402
@@ -42,6 +42,7 @@ APP_ID = "io.github.whalechan.Desktop"
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 DEFAULT_SVG = ROOT / "assets" / "whale-chan.svg"
+SCRIPTS_PATH = ROOT / "scripts"
 CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "whalechan" / "config.json"
 
 FPS = 20
@@ -66,24 +67,28 @@ while running(pid) and time.monotonic() < deadline:
     time.sleep(0.05)
 os.execv(sys.argv[2], sys.argv[2:])
 """
-ACCENTS = {
-    "neutral": (0.333, 0.741, 0.969),
-    "angry": (1.0, 0.416, 0.373),
-    "smug": (0.906, 0.706, 0.325),
-    "happy": (0.180, 0.624, 0.878),
-    "sad": (0.369, 0.561, 0.847),
-    "thinking": (0.271, 0.725, 0.867),
-    "sleepy": (0.545, 0.478, 0.851),
-}
-GLOWS = {
-    "neutral": (0.50, 0.88, 1.0),
-    "angry": (1.0, 0.48, 0.42),
-    "smug": (1.0, 0.89, 0.58),
-    "happy": (0.63, 0.95, 1.0),
-    "sad": (0.57, 0.74, 1.0),
-    "thinking": (0.49, 0.90, 0.97),
-    "sleepy": (0.72, 0.66, 1.0),
-}
+
+
+class _ByMood(dict):
+    """Per-mood values from assets/moods.json; moods without one get the default mood's."""
+
+    def __init__(self, get, fallback):
+        super().__init__((m["name"], get(m)) for m in MOOD_REGISTRY if get(m))
+        default = next((m["name"] for m in MOOD_REGISTRY if m.get("default")), "neutral")
+        self.fallback = self.get(default, fallback)
+
+    def __missing__(self, mood):
+        return self.fallback
+
+
+def _theme_rgb(key):
+    return lambda mood: tuple(float(c) for c in (mood.get("theme") or {}).get(key) or ()) or None
+
+
+ACCENTS = _ByMood(_theme_rgb("desktopAccent"), (0.333, 0.741, 0.969))
+GLOWS = _ByMood(_theme_rgb("desktopGlow"), (0.50, 0.88, 1.0))
+MOOD_LABELS = {m["name"]: m.get("label") or m["name"].capitalize() for m in MOOD_REGISTRY}
+STRAINS = {m["name"]: strains(m) for m in MOOD_REGISTRY}
 
 LINES = [
     "I'm not lost. I'm strategically floating.",
@@ -107,15 +112,7 @@ FEED_LINES = [
     "Fuel accepted. Maid-chan is entering turbo standby.",
     "One bowl equals one thousand tokens. Roughly. Don't check.",
 ]
-MOOD_LINES = {
-    "neutral": "Back to standby. Very professional.",
-    "angry": "I'm not angry. I'm aggressively recalibrating.",
-    "smug": "Oh, you want an explanation? Adorable.",
-    "happy": "I did it! The rice is still warm. Double win.",
-    "sad": "I'm not crying. My face is just leaking.",
-    "thinking": "Think. Think. The answer is in here somewhere.",
-    "sleepy": "Zzz… five more minutes… the rice can wait…",
-}
+MOOD_LINES = _ByMood(lambda mood: mood.get("line"), "Back to standby. Very professional.")
 REACT_LINES = {
     "working": [
         "On it. Thinking very hard. Please admire my focus.",
@@ -172,7 +169,9 @@ APP_RULES = [
 APP_COMMENT_COOLDOWN = 180       # seconds between any two app comments
 APP_RULE_COOLDOWN = 20 * 60      # seconds before the same rule fires again
 GRAVITY = 2600                   # px/s²
-SLOW_STATES = {"sleepy"}
+# Moods marked "slow" in the registry, with their strain variants.
+SLOW_STATES = {f"{m['name']}-{level}" if level else m["name"]
+               for m in MOOD_REGISTRY if m.get("slow") for level in [0, *strains(m)]}
 PERCH_SNAP = 36                  # how close her feet must be to a window top to perch
 
 GREETING = "Hi, I'm Whale-chan. Drag me anywhere. Right-click me for options."
@@ -889,8 +888,9 @@ class Mascot(Gtk.Window):
 
     # -- moods ----------------------------------------------------------------------
     def _current_strain(self):
-        if self.state.startswith("thinking-"):
-            return int(self.state.rsplit("-", 1)[1])
+        tail = self.state[len(self.mood) + 1:]
+        if self.state.startswith(f"{self.mood}-") and tail.isdigit():
+            return int(tail)
         return 0
 
     def _state_for(self, mood, strain):
@@ -1079,7 +1079,8 @@ class Mascot(Gtk.Window):
                  persist=True):
         """Change mood.
 
-        `thinking` escalates to strain 1 and 2 after the `escalate` delays (seconds);
+        Moods with strain variants (`thinking`) escalate through them after the
+        `escalate` delays (seconds);
         pass escalate=None to hold `strain`. With `revert_after`, she drops back to
         neutral after that many seconds. Only persistent, non-temporary moods are
         saved as the startup mood.
@@ -1094,16 +1095,17 @@ class Mascot(Gtk.Window):
             GLib.source_remove(self._revert_timer)
             self._revert_timer = None
         self.mood = mood
-        strain = max(0, min(2, int(strain or 0))) if mood == "thinking" else 0
+        levels = STRAINS.get(mood, [])
+        strain = max(0, min(levels[-1], int(strain or 0))) if levels else 0
         self._switch_state(self._state_for(mood, strain), poof=1.0 if changed else 0.0)
-        if mood == "thinking" and escalate:
+        if levels and escalate:
             def escalate_to(level):
                 self._think_timers = [t for t in self._think_timers if t != handles.get(level)]
-                if self.mood == "thinking":
-                    self._switch_state(self._state_for("thinking", level), poof=0.6)
+                if self.mood == mood:
+                    self._switch_state(self._state_for(mood, level), poof=0.6)
                 return False
             handles = {}
-            for level, delay in zip((1, 2), escalate):
+            for level, delay in zip(levels, escalate):
                 if level > strain:
                     handles[level] = GLib.timeout_add(int(delay * 1000), escalate_to, level)
             self._think_timers = list(handles.values())
@@ -1545,6 +1547,10 @@ class WhaleApp(Gtk.Application):
             m.say(random.choice(lines))
             return
 
+    def run_script(self):
+        for script in os.listdir(SCRIPTS_PATH):
+            pass
+
     def restart_app(self, *_args):
         """Replace this process with a fresh one, keeping the same launch arguments."""
         argv = [sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]]
@@ -1745,7 +1751,7 @@ class WhaleApp(Gtk.Application):
         moods = submenu("Mood")
         group = None
         for mood in MOODS:
-            group = radio(moods, group, mood.capitalize(), mood == m.mood,
+            group = radio(moods, group, MOOD_LABELS[mood], mood == m.mood,
                           lambda mood=mood: m.set_mood(mood))
 
         sizes = submenu("Size")
