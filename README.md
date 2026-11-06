@@ -101,7 +101,7 @@ returns instantly. Symlink it onto your `PATH` if you like:
 ```bash
 whalechan start                          # launch in the background (no-op if running)
 whalechan say "Build passed" -m happy --for 8
-whalechan mood thinking                  # neutral angry smug happy sad thinking sleepy
+whalechan mood thinking                  # neutral angry smug happy sad thinking sleepy dance
 whalechan mood thinking --strain 0       # hold a strain level instead of escalating
 whalechan react success                  # working success failure error attention idle
 whalechan react fail "3 tests broke"     # aliases: start done pass fail crash waiting …
@@ -189,9 +189,16 @@ python3 desktop/whalechan.py --svg path/to/mascot.svg
 │   └── opencode/whalechan  OpenCode plugin: reacts to agent sessions
 ├── assets/
 │   ├── whale-chan.svg      standalone rigged + animated vector SVG
+│   ├── moods.json          mood registry read by the widget, demo and desktop app
+│   ├── rig.json            art catalog (parts, pose variables, layers) for the editor
 │   └── preview.webp        README preview
+├── moods/                  one JSON file per mood + shared defaults/keyframes
+├── editor/                 local web mood editor
 ├── tools/
-│   └── build_whale_chan.py optional generator for the SVG art and poses
+│   ├── build_whale_chan.py generator for the SVG art (compiles moods/ via node)
+│   ├── moods.mjs           mood compiler shared by the build and the editor
+│   ├── compile_moods.mjs   CLI wrapper used by the build
+│   └── editor_server.py    local server for the mood editor
 └── reference/
     ├── README.md           image sources, attribution, licensing
     ├── isolated/           transparent reference art + cleaned master
@@ -200,14 +207,19 @@ python3 desktop/whalechan.py --svg path/to/mascot.svg
 
 ## Use the mascot on another page
 
-Copy `src/mascot.js` and `assets/whale-chan.svg` somewhere your page can reach,
-then:
+Copy `src/mascot.js`, `assets/whale-chan.svg` and `assets/moods.json` somewhere
+your page can reach (keep `moods.json` next to the SVG), then:
 
 ```html
 <script src="/path/to/mascot.js" defer></script>
 
 <deepseek-mascot src="/path/to/whale-chan.svg"></deepseek-mascot>
 ```
+
+The mood list, speech lines and accent colours come from `moods.json`. If it lives
+elsewhere, point to it with `moods="/path/to/moods.json"`. Without it the widget
+still works but only knows `neutral`'s theme. `whale.moods` lists the loaded moods
+and `whale.moodsReady` is a promise that resolves once they are loaded.
 
 The widget injects its own styles into a shadow root, so it will not collide with
 the rest of the page. It can be placed anywhere in the document; visually it is
@@ -248,7 +260,7 @@ const whale = document.querySelector("deepseek-mascot");
 
 whale.say("Custom line from your app.");
 whale.speak("Alias of say().");
-whale.setMood("happy");        // neutral | angry | smug | happy | sad | thinking | sleepy
+whale.setMood("happy");        // neutral | angry | smug | happy | sad | thinking | sleepy | dance
 whale.setMood("sad", { announce: false }); // switch pose without a speech bubble
 whale.mood;                    // current mood
 whale.feed();                  // rice particles + a random rice-related line
@@ -311,6 +323,7 @@ Each mood is a **full-body pose**, not just a face swap:
 | `thinking` (`data-strain="1"`) | hands pressed to her temples, shaking | `> <` eyes, sweat drop |
 | `thinking` (`data-strain="2"`) | overthinking: arms flailing, vibrating, spinning ahoge | swirl eyes, steam, scribbled thought, `?!` |
 | `sleepy` | dozing on her feet hugging a whale plush; slow breathing, head nods off and jerks back up | closed eyes, breathing "o" mouth, snot bubble, floating Z's |
+| `dance` | 8-count loop: one fist thrown up and pumped while the opposite leg steps out, then the other side; bounces on every count | happy closed eyes, open smile, floating music notes |
 
 Poses are CSS custom properties on the SVG root (for example `--lu`/`--lf` for the
 left shoulder and elbow angles, `--hr` for head tilt, `--tail`, `--ahoge`), and each
@@ -323,13 +336,46 @@ It is traced in the coordinate space of
 [`reference/isolated/whalechan-art-master.webp`](reference/isolated/whalechan-art-master.webp)
 (silhouettes were checked against the reference alpha mask) and drawn in the
 reference's anime style: tapered hair locks with cel shading and gloss, layered
-irises with winged lashes, and line art tinted to each material. Arm poses are
-solved with two-bone IK from hand targets. You only need the script to change the
-drawing or the poses:
+irises with winged lashes, and line art tinted to each material.
+
+Moods are data, not code. Each one is a JSON file in [`moods/`](moods/README.md)
+holding its pose (hand targets solved with two-bone IK, plus pose variables),
+visible face/effect layers, keyframe motion per body part, strain variants and
+theme (label, speech line, button icon, colours). The build compiles them with
+[`tools/moods.mjs`](tools/moods.mjs), the same compiler the editor uses for its
+live preview, and writes the SVG, `assets/moods.json` and `assets/rig.json`.
+Needs Python 3 and Node:
 
 ```bash
-python3 tools/build_whale_chan.py   # rewrites assets/whale-chan.svg
+python3 tools/build_whale_chan.py   # rewrites assets/whale-chan.svg, moods.json, rig.json
 ```
+
+A new mood shows up everywhere after a build: widget, demo buttons, desktop app,
+CLI and the desktop frame baker.
+
+## Mood editor
+
+Create and tweak moods in the browser instead of editing JSON:
+
+```bash
+python3 tools/editor_server.py --open   # http://127.0.0.1:8765/editor/ (localhost only)
+```
+
+- **Pose**: drag her hands on the preview (IK solves the elbow), toggle fists,
+  and use sliders for head tilt, brows, gaze, fin-ears, ahoge, tail, blush and body squash.
+- **Face & layers**: pick eyes and mouth, and toggle lids, tears, effects, props and thought bubbles.
+- **Timeline**: one track per body part with draggable keyframes, a scrubbable playhead,
+  per-track duration/delay/easing (with a curve editor), per-stop easing, and hand
+  keyframes you place by dragging the hand at the playhead.
+  - **Beat helpers**: set BPM × counts to snap to the beat.
+  - **Mirror to other side**: copy a track to the opposite arm or leg, optionally half a loop later (this is how `dance` alternates sides).
+  - **Bake badge**: shows the loop period the desktop baker will use and warns about tracks that won't loop cleanly.
+- **Variants**: edit per-strain overrides (like `thinking`'s escalation).
+- **Meta**: label, speech line, button icon and theme colours for the web page and desktop app.
+- **Save and Build**: Save writes `moods/<name>.json` (checked by the compiler first).
+  Build regenerates the SVG and registries. Undo/redo, Ctrl+S, Space to play.
+
+The editor's internals and extension points are described in [`editor/README.md`](editor/README.md).
 
 Dragging pauses the SVG animations (`.is-paused`). `prefers-reduced-motion` and the
 `.reduce-motion` class stop all loops but keep each mood's static pose.
