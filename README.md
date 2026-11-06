@@ -155,11 +155,22 @@ ln -s "$PWD/integrations/opencode/whalechan" ~/.config/opencode/plugins/whalecha
 {
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "whalechan -q react working --quiet-line 2>/dev/null || true" }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "whalechan -q react success 2>/dev/null || true" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "~/.claude/hooks/whalechan-react.sh success" }] }],
     "StopFailure": [{ "hooks": [{ "type": "command", "command": "whalechan -q react error 2>/dev/null || true" }] }],
-    "Notification": [{ "hooks": [{ "type": "command", "command": "whalechan -q react attention 2>/dev/null || true" }] }]
+    "Notification": [{ "hooks": [{ "type": "command", "command": "~/.claude/hooks/whalechan-react.sh attention" }] }]
   }
 }
+```
+
+[`integrations/claude-code/whalechan-react.sh`](integrations/claude-code/whalechan-react.sh)
+wraps `whalechan -q react` and keeps her quiet on Stop and idle prompts while
+background agents or shells are still running, so she only cheers once the work
+is really done. It asks a `bg-pending <transcript>` helper for the count
+(`~/.claude/hooks/bg-pending` by default, or set `WHALECHAN_BG_PENDING`); without
+the helper she reacts every time, as with plain `whalechan -q react`. Link it in:
+
+```bash
+ln -s "$PWD/integrations/claude-code/whalechan-react.sh" ~/.claude/hooks/whalechan-react.sh
 ```
 
 Bake by hand, e.g. for another SVG with the same rig contract (`data-mood`,
@@ -186,6 +197,7 @@ python3 desktop/whalechan.py --svg path/to/mascot.svg
 │   ├── x11watch.py         windows, active app, workspaces, idle time
 │   └── bake.py             bakes the SVG rig into looping frames + click masks
 ├── integrations/
+│   ├── claude-code/        Claude Code hook wrapper: quiet while background work runs
 │   └── opencode/whalechan  OpenCode plugin: reacts to agent sessions
 ├── assets/
 │   ├── whale-chan.svg      standalone rigged + animated vector SVG
