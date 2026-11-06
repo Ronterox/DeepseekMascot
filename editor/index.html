@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Whale-chan mood editor</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230e2247'/%3E%3Cpath d='M12 34c0-10 8-17 18-17 8 0 13 4 16 9l5-5c2-2 3.5 1 2.5 2.5L49 31c-2 9-8 15-17 15-11 0-20-5-20-12Z' fill='%23fff'/%3E%3Ccircle cx='30' cy='30' r='2.5' fill='%230e2247'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="editor.css">
+  <script type="module" src="main.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-dot"></span>Whale-chan <b>mood editor</b></div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <div class="actions">
+      <button id="undo" class="tool" type="button" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+      <button id="redo" class="tool" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <span class="sep"></span>
+      <button id="revert" class="tool" type="button" title="Discard unsaved changes to this mood">Revert</button>
+      <button id="save" class="tool" type="button" title="Save this mood (Ctrl+S)">Save</button>
+      <button id="save-all" class="tool" type="button" title="Save every changed mood (Ctrl+Shift+S)">Save all</button>
+      <button id="build" class="tool primary" type="button" title="Save, then rebuild the SVG and moods.json">Build</button>
+      <button id="show-log" class="tool ghost" type="button" title="Last build output" hidden>log</button>
+    </div>
+  </header>
+
+  <main class="app">
+    <aside id="sidebar" class="sidebar" aria-label="Moods"></aside>
+
+    <section class="stage-wrap" aria-label="Preview">
+      <div class="preview-bar">
+        <button id="play" class="tool" type="button" title="Play / pause all animations (Space)" aria-label="Pause">❚❚</button>
+        <button id="restart" class="tool" type="button" title="Restart animations from 0" aria-label="Restart">⟲</button>
+        <label class="mini-field" title="Playback speed">speed
+          <select id="speed">
+            <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option>
+            <option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+          </select>
+        </label>
+        <span class="sep"></span>
+        <div class="seg" id="bg" role="radiogroup" aria-label="Background">
+          <button type="button" data-bg="light" title="Light background">light</button>
+          <button type="button" data-bg="dark" title="Dark background">dark</button>
+          <button type="button" data-bg="checker" title="Transparency checkerboard">checker</button>
+        </div>
+        <span class="sep"></span>
+        <button id="zoom-out" class="tool" type="button" title="Zoom out (Ctrl+wheel)" aria-label="Zoom out">−</button>
+        <button id="zoom-fit" class="tool" type="button" title="Fit to view">fit</button>
+        <button id="zoom-in" class="tool" type="button" title="Zoom in (Ctrl+wheel)" aria-label="Zoom in">+</button>
+        <span class="sep"></span>
+        <label class="check" title="Draggable hand handles (H)"><input id="show-hands" type="checkbox" checked> hands</label>
+        <label class="check" title="Rig part pivots (P)"><input id="show-pivots" type="checkbox"> pivots</label>
+        <span class="grow"></span>
+        <span id="preview-state" class="muted mono"></span>
+      </div>
+      <div id="viewport" class="viewport bg-light">
+        <div id="stage" class="stage"><div id="preview-host"></div></div>
+        <div id="stale" class="stale" hidden>Preview paused: fix the validation errors to see changes.</div>
+      </div>
+      <!-- timeline: editor/timeline/panel.js -->
+      <div id="timeline" class="timeline" hidden></div>
+    </section>
+
+    <aside id="inspector" class="inspector" aria-label="Inspector"></aside>
+  </main>
+
+  <dialog id="new-dialog" class="dialog">
+    <form method="dialog">
+      <h3>New mood</h3>
+      <label class="field"><span class="field-label">Name</span>
+        <input id="new-name" type="text" required maxlength="24" pattern="[a-z][a-z0-9\-]{0,23}" autocomplete="off" spellcheck="false" placeholder="wave">
+      </label>
+      <div class="field-error" id="new-error"></div>
+      <fieldset class="radios">
+        <label class="check"><input type="radio" name="new-base" value="blank" checked> Blank (neutral pose)</label>
+        <label class="check"><input type="radio" name="new-base" value="dup"> Duplicate <b id="new-dup-name"></b></label>
+      </fieldset>
+      <div class="dialog-actions">
+        <button class="tool" value="cancel" formnovalidate>Cancel</button>
+        <button class="tool primary" id="new-ok" value="ok">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="log-dialog" class="dialog wide">
+    <form method="dialog">
+      <h3 id="log-title">Build output</h3>
+      <pre id="log-body" class="log"></pre>
+      <div class="dialog-actions"><button class="tool" value="close">Close</button></div>
+    </form>
+  </dialog>
+</body>
+</html>
