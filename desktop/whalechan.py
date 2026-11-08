@@ -253,10 +253,21 @@ def make_transparent(window):
         window.set_visual(visual)
 
 
+def list_scripts():
+    """Executable files in scripts/, sorted."""
+    if not SCRIPTS_PATH.is_dir():
+        return []
+    return sorted(p.name for p in SCRIPTS_PATH.iterdir() if p.is_file() and os.access(p, os.X_OK))
+
+
+def script_label(script):
+    return Path(script).stem.capitalize()
+
+
 class Config:
     DEFAULTS = {"size": 260, "mood": "neutral", "opacity": 1.0, "glow": True, "x": None, "y": None,
                 "follow": True, "perch": True, "comments": True, "sleep": True, "sleep_after": 240,
-                "fullscreen_hide": False,
+                "fullscreen_hide": False, "autostart": [],
                 # agent work: chin-tap thinking, then harder after 5 min, stressed after 10
                 "think_harder_after": 300, "think_stressed_after": 600,
                 # blocked on you or on background work: foot tapping, impatient after 2 min, fuming after 5
@@ -1443,6 +1454,7 @@ class WhaleApp(Gtk.Application):
         self.hold()
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, self._quit_signal)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self._quit_signal)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGHUP, self._quit_signal)
         self.control = ControlServer(socket_path(), self.handle_request)
         try:
             self.control.start()
@@ -1464,6 +1476,10 @@ class WhaleApp(Gtk.Application):
         if self.mascot.mood != "neutral":
             self.mascot.set_mood(self.mascot.mood, announce=False)
         self._setup_status_icon(frames)
+        available = list_scripts()
+        for script in self.config["autostart"]:
+            if script in available:
+                self.run_script(script, autostart=True)
         GLib.timeout_add(900, lambda: self.mascot.say(GREETING, 7200) and False)
         if X11Watch is not None:
             try:
@@ -1565,32 +1581,62 @@ class WhaleApp(Gtk.Application):
             return
 
     def terminate_proc(self, proc):
+        """Stop a script and everything it started: it leads its own process group."""
         if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGTERM)
             try:
-                proc.terminate()
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+                pass
+            try:  # sweep children that outlived the script or ignored SIGTERM
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
 
-    def run_script(self, script, *args):
-        """Run a script in the background."""
-        script = os.path.join(SCRIPTS_PATH, script)
+    def script_running(self, script):
+        proc = RUNNING_PROCS.get(script)
+        return proc is not None and proc.poll() is None
 
-        if (proc := RUNNING_PROCS.get(script)):
-            del RUNNING_PROCS[script]
+    def stop_script(self, script):
+        if (proc := RUNNING_PROCS.pop(script, None)):
             self.terminate_proc(proc)
 
-        if not os.path.exists(script):
-            print(f"whalechan: {script} not found", file=sys.stderr)
+    def run_script(self, script, autostart=False):
+        """Run a script in the background, replacing it if it is already running."""
+        self.stop_script(script)
+        path = SCRIPTS_PATH / script
+        if not path.is_file():
+            print(f"whalechan: {path} not found", file=sys.stderr)
             return
-
+        env = dict(os.environ, WHALECHAN_AUTOSTART="1") if autostart else None
         try:
-            proc = subprocess.Popen([script] + list(args), stdin=subprocess.DEVNULL, close_fds=True)
-            RUNNING_PROCS[script] = proc
+            RUNNING_PROCS[script] = subprocess.Popen([str(path)], stdin=subprocess.DEVNULL, env=env,
+                                                     start_new_session=True, close_fds=True)
         except OSError as exc:
-            print(f"whalechan: {script} failed to run: {exc}", file=sys.stderr)
+            print(f"whalechan: {path} failed to run: {exc}", file=sys.stderr)
             self.mascot.say(f"I couldn't run {script!r}. It says: {exc}")
+
+    def script_clicked(self, script):
+        """Run a script; if it is already running, ask whether to stop or restart it."""
+        if not self.script_running(script):
+            self.run_script(script)
+            return
+        dialog = Gtk.MessageDialog(message_type=Gtk.MessageType.QUESTION,
+                                   text=f"{script_label(script)} is running.")
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Stop", 1, "Restart", 2)
+        dialog.set_keep_above(True)
+        response = dialog.run()
+        dialog.destroy()
+        if response == 1:
+            self.stop_script(script)
+        elif response == 2:
+            self.run_script(script)
+
+    def set_autostart(self, script, on):
+        names = [s for s in self.config["autostart"] if s != script]
+        self.config["autostart"] = names + [script] if on else names
+        self.config.save()
 
     def restart_app(self, *_args):
         """Replace this process with a fresh one, keeping the same launch arguments."""
@@ -1835,16 +1881,19 @@ class WhaleApp(Gtk.Application):
         menu.append(Gtk.SeparatorMenuItem())
 
         scripts = submenu("Scripts")
-        for script in os.listdir(SCRIPTS_PATH):
-            path = os.path.join(SCRIPTS_PATH, script)
-            if not os.access(path, os.X_OK):
-                continue
-
-            script_name = os.path.splitext(script)[0].capitalize()
-            if (proc := RUNNING_PROCS.get(path)) and proc.poll() is None:
-                script_name += " (running)"
-
-            item(script_name, lambda script=script: self.run_script(script), sub=scripts)
+        startup = Gtk.Menu()
+        for script in list_scripts():
+            label = script_label(script)
+            item(label + (" (running)" if self.script_running(script) else ""),
+                 lambda script=script: self.script_clicked(script), sub=scripts)
+            check = Gtk.CheckMenuItem.new_with_label(label)
+            check.set_active(script in self.config["autostart"])
+            check.connect("toggled", lambda w, script=script: self.set_autostart(script, w.get_active()))
+            startup.append(check)
+        scripts.append(Gtk.SeparatorMenuItem())
+        startup_item = Gtk.MenuItem.new_with_label("Run at startup")
+        startup_item.set_submenu(startup)
+        scripts.append(startup_item)
 
         item("Restart", self.restart_app)
         item("Quit", self.quit_app)
