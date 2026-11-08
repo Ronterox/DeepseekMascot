@@ -15,7 +15,7 @@ from pathlib import Path
 
 REGISTRY_PATH = Path(__file__).resolve().parent.parent / "assets" / "moods.json"
 # Used when assets/moods.json is missing or unreadable.
-FALLBACK_MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking", "sleepy", "dance"]
+FALLBACK_MOODS = ["neutral", "angry", "smug", "happy", "sad", "thinking", "waiting", "sleepy", "dance"]
 
 
 def load_moods(path=REGISTRY_PATH):
@@ -29,12 +29,12 @@ def load_moods(path=REGISTRY_PATH):
     moods = [m for m in data if isinstance(m, dict) and re.fullmatch(r"[a-z0-9-]+", str(m.get("name", "")))]
     if not moods:
         moods = [{"name": name, "default": name == "neutral", "slow": name == "sleepy",
-                  "variants": ["0", "1", "2"] if name == "thinking" else []} for name in FALLBACK_MOODS]
+                  "variants": ["0", "1", "2"] if name in ("thinking", "waiting") else []} for name in FALLBACK_MOODS]
     return moods
 
 
 def strains(mood):
-    """Strain levels above 0 that a registry mood has variants for (thinking: [1, 2])."""
+    """Strain levels above 0 that a registry mood has variants for (thinking, waiting: [1, 2])."""
     return sorted(int(v) for v in mood.get("variants") or [] if str(v).isdigit() and int(v) > 0)
 
 
@@ -46,7 +46,12 @@ EVENTS = {
     "success": ("happy", 8),
     "failure": ("sad", 10),
     "error": ("angry", 10),
-    "attention": (None, None),
+    # someone needs the user: hop, then wait for them
+    "attention": ("waiting", None),
+    # blocked on output (background agents, builds, other tasks)
+    "waiting": ("waiting", None),
+    # the wait is over, back to work; does nothing unless she is waiting
+    "resume": ("thinking", None),
     "idle": ("neutral", None),
 }
 EVENT_ALIASES = {
@@ -54,7 +59,9 @@ EVENT_ALIASES = {
     "done": "success", "ok": "success", "pass": "success", "passed": "success",
     "fail": "failure", "failed": "failure",
     "crash": "error",
-    "input": "attention", "waiting": "attention", "notify": "attention",
+    "input": "attention", "notify": "attention", "question": "attention", "permission": "attention",
+    "wait": "waiting", "blocked": "waiting", "pending": "waiting",
+    "continue": "resume", "resumed": "resume", "unblocked": "resume",
     "reset": "idle", "neutral": "idle",
 }
 COMMANDS = ["ping", "status", "say", "mood", "feed", "react", "show", "hide",

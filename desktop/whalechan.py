@@ -141,7 +141,16 @@ REACT_LINES = {
         "Psst. Someone's waiting on you.",
         "Excuse me, your input is requested. Politely. For now.",
     ],
+    "waiting": [
+        "Waiting on the others. Tap. Tap. Tap.",
+        "Not done yet. I'll wait. Patiently. For now.",
+        "Somebody's still working. I'm timing them.",
+    ],
 }
+# React events whose mood escalates through its strain levels, with the config keys
+# holding the delays (seconds) before each level.
+ESCALATION = {"thinking": ("think_harder_after", "think_stressed_after"),
+              "waiting": ("wait_annoyed_after", "wait_furious_after")}
 WAKE_LINES = [
     "I wasn't sleeping! I was… optimizing.",
     "Huh? Oh. You're back. I was guarding the desktop. With my eyes closed.",
@@ -249,7 +258,9 @@ class Config:
                 "follow": True, "perch": True, "comments": True, "sleep": True, "sleep_after": 240,
                 "fullscreen_hide": False,
                 # agent work: chin-tap thinking, then harder after 5 min, stressed after 10
-                "think_harder_after": 300, "think_stressed_after": 600}
+                "think_harder_after": 300, "think_stressed_after": 600,
+                # blocked on you or on background work: foot tapping, impatient after 2 min, fuming after 5
+                "wait_annoyed_after": 120, "wait_furious_after": 300}
 
     def __init__(self, path):
         self.path = path
@@ -1081,7 +1092,7 @@ class Mascot(Gtk.Window):
                  persist=True):
         """Change mood.
 
-        Moods with strain variants (`thinking`) escalate through them after the
+        Moods with strain variants (`thinking`, `waiting`) escalate through them after the
         `escalate` delays (seconds);
         pass escalate=None to hold `strain`. With `revert_after`, she drops back to
         neutral after that many seconds. Only persistent, non-temporary moods are
@@ -1126,11 +1137,15 @@ class Mascot(Gtk.Window):
     def react(self, event, text=None, quiet=False):
         """Mood + line for an external event (see protocol.EVENTS)."""
         mood, revert = EVENTS[event]
-        if event == "working":
-            # Long-running work: chin-tap first, thinking harder after a while,
-            # the overthinking meltdown only when it really drags on.
-            escalate = (float(self.config["think_harder_after"]), float(self.config["think_stressed_after"]))
-            self.set_mood("thinking", announce=False, escalate=escalate, persist=False)
+        if event == "resume" and self.mood != "waiting":
+            return  # only ends a wait; work or a finished turn stays as it is
+        if mood in ESCALATION:
+            # Long work (thinking) and long waits (waiting) start calm and escalate
+            # slowly. Repeating the event keeps the current level and timers, so a
+            # second "still waiting" doesn't calm her down again.
+            if mood != self.mood or self.sleeping or self._revert_timer:
+                escalate = tuple(float(self.config[key]) for key in ESCALATION[mood])
+                self.set_mood(mood, announce=False, escalate=escalate, persist=False)
         elif mood:
             self.set_mood(mood, announce=False, revert_after=revert, persist=False)
         if event == "attention":
@@ -1601,6 +1616,8 @@ class WhaleApp(Gtk.Application):
             self.mascot._save_position()
             self.mascot.bubble.destroy()
             self.mascot.destroy()
+        for proc in RUNNING_PROCS.values():
+            self.terminate_proc(proc)
         self.release()
         self.quit()
 
@@ -1616,8 +1633,6 @@ class WhaleApp(Gtk.Application):
                 "--width", str(width), "--fps", str(FPS)]
         proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
         stream = Gio.DataInputStream.new(proc.get_stdout_pipe())
-        for proc in RUNNING_PROCS.values():
-            self.terminate_proc(proc)
         result = {"dir": None}
 
         def on_line(src, res):
@@ -1752,14 +1767,14 @@ class WhaleApp(Gtk.Application):
         def item(label, callback, sub=None):
             mi = Gtk.MenuItem.new_with_label(label)
             mi.connect("activate", lambda *_: callback())
-            menu.append(mi)
+            sub.append(mi) if sub is not None else menu.append(mi)
             return mi
 
         def submenu(label):
             mi = Gtk.MenuItem.new_with_label(label)
             sub = Gtk.Menu()
             mi.set_submenu(sub)
-            sub.append(mi) if sub is not None else menu.append(mi)
+            menu.append(mi)
             return sub
 
         def radio(sub, group, label, active, callback):
@@ -1816,7 +1831,21 @@ class WhaleApp(Gtk.Application):
         if m.is_shown():
             item("Hide for 10 minutes", lambda: self.hide_mascot(600))
             item("Hide", lambda: self.hide_mascot(None))
+
         menu.append(Gtk.SeparatorMenuItem())
+
+        scripts = submenu("Scripts")
+        for script in os.listdir(SCRIPTS_PATH):
+            path = os.path.join(SCRIPTS_PATH, script)
+            if not os.access(path, os.X_OK):
+                continue
+
+            script_name = os.path.splitext(script)[0].capitalize()
+            if (proc := RUNNING_PROCS.get(path)) and proc.poll() is None:
+                script_name += " (running)"
+
+            item(script_name, lambda script=script: self.run_script(script), sub=scripts)
+
         item("Restart", self.restart_app)
         item("Quit", self.quit_app)
         menu.show_all()
@@ -1831,21 +1860,7 @@ class WhaleApp(Gtk.Application):
             menu.popup_at_pointer(None)
 
     # -- actions -----------------------------------------------------------------------------
-
     def set_size(self, width):
-
-        scripts = submenu("Scripts")
-        for script in os.listdir(SCRIPTS_PATH):
-            path = os.path.join(SCRIPTS_PATH, script)
-            if not os.access(path, os.X_OK):
-                continue
-
-            script_name = os.path.splitext(script)[0].capitalize()
-            if (proc := RUNNING_PROCS.get(path)) and proc.poll() is None:
-                script_name += " (running)"
-
-            item(script_name, lambda script=script: self.run_script(script), sub=scripts)
-
         if width == int(self.config["size"]) or self._baking:
             return
         self.mascot.say("Hold on, resizing…", 2000)

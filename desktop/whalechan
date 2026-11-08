@@ -4,7 +4,7 @@
   whalechan start                      launch her (no-op if already running)
   whalechan say "Build passed" -m happy
   whalechan mood thinking              moods: {moods}
-  whalechan react success              events: working success failure error attention idle
+  whalechan react success              events: working success failure error attention waiting resume idle
   whalechan run -- make test           thinking while it runs, then happy or sad
   whalechan feed | show | hide | toggle | home | sleep | wake | status | quit
 
@@ -165,7 +165,7 @@ def main(argv=None):
     p.add_argument("--for", dest="revert", type=float, metavar="SECONDS",
                    help="return to neutral after this many seconds")
     p.add_argument("--strain", type=int, choices=[0, 1, 2],
-                   help="thinking only: hold this strain level instead of escalating")
+                   help="thinking/waiting only: hold this strain level instead of escalating")
     p.add_argument("--announce", action="store_true", help="say her default line for the mood")
 
     events = ", ".join(EVENTS)

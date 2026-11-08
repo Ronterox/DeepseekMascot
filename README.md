@@ -103,8 +103,8 @@ whalechan start                          # launch in the background (no-op if ru
 whalechan say "Build passed" -m happy --for 8
 whalechan mood thinking                  # neutral angry smug happy sad thinking waiting sleepy dance
 whalechan mood thinking --strain 0       # hold a strain level instead of escalating
-whalechan react success                  # working success failure error attention idle
-whalechan react fail "3 tests broke"     # aliases: start done pass fail crash waiting …
+whalechan react success                  # working success failure error attention waiting resume idle
+whalechan react fail "3 tests broke"     # aliases: start done pass fail crash input wait blocked …
 whalechan run -- make test               # thinks while it runs, then cheers or sulks
 whalechan move 600 300                   # place her; she perches if that's on a window top
 whalechan sleep | wake
@@ -114,8 +114,16 @@ whalechan feed | show | hide | toggle | home | status | quit
 - `react working` starts with the hand-on-chin thinking pose, thinks harder
   (hands on temples) after 5 min and has the overthinking meltdown after 10 min
   (`think_harder_after` / `think_stressed_after` in the config, in seconds).
-  `success`/`failure`/`error` return to neutral after 8–10 s; `attention` makes
-  her hop.
+  `success`/`failure`/`error` return to neutral after 8–10 s.
+- `react waiting` is for being blocked on output (background agents, builds,
+  another task): hands on hips, tapping her foot and glancing at the clock. She
+  gets impatient (half-lidded pout, faster tapping) after 2 min and fumes
+  (stomping, 💢) after 5 min (`wait_annoyed_after` / `wait_furious_after`).
+  `react attention` is for being blocked on *you*: she hops, says so, and waits
+  the same way. `react resume` ends a wait and goes back to thinking; it does
+  nothing unless she is waiting, so it is safe to send often.
+- Repeating `working` or `waiting` while she is already in that mood keeps her
+  current level, so senders that repeat themselves don't calm her down.
 - `react --quiet-line` changes mood without a speech bubble; `--key ID` drops
   repeats of the same key within 3 s (for senders that report events twice).
 - `run` passes the command's exit code through, so it can wrap anything.
