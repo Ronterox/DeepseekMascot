@@ -68,6 +68,8 @@ while running(pid) and time.monotonic() < deadline:
 os.execv(sys.argv[2], sys.argv[2:])
 """
 
+RUNNING_PROCS: dict[str, subprocess.Popen[bytes]] = {}
+
 
 class _ByMood(dict):
     """Per-mood values from assets/moods.json; moods without one get the default mood's."""
@@ -1547,9 +1549,33 @@ class WhaleApp(Gtk.Application):
             m.say(random.choice(lines))
             return
 
-    def run_script(self):
-        for script in os.listdir(SCRIPTS_PATH):
-            pass
+    def terminate_proc(self, proc):
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+    def run_script(self, script, *args):
+        """Run a script in the background."""
+        script = os.path.join(SCRIPTS_PATH, script)
+
+        if (proc := RUNNING_PROCS.get(script)):
+            del RUNNING_PROCS[script]
+            self.terminate_proc(proc)
+
+        if not os.path.exists(script):
+            print(f"whalechan: {script} not found", file=sys.stderr)
+            return
+
+        try:
+            proc = subprocess.Popen([script] + list(args), stdin=subprocess.DEVNULL, close_fds=True)
+            RUNNING_PROCS[script] = proc
+        except OSError as exc:
+            print(f"whalechan: {script} failed to run: {exc}", file=sys.stderr)
+            self.mascot.say(f"I couldn't run {script!r}. It says: {exc}")
 
     def restart_app(self, *_args):
         """Replace this process with a fresh one, keeping the same launch arguments."""
@@ -1590,6 +1616,8 @@ class WhaleApp(Gtk.Application):
                 "--width", str(width), "--fps", str(FPS)]
         proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
         stream = Gio.DataInputStream.new(proc.get_stdout_pipe())
+        for proc in RUNNING_PROCS.values():
+            self.terminate_proc(proc)
         result = {"dir": None}
 
         def on_line(src, res):
@@ -1721,7 +1749,7 @@ class WhaleApp(Gtk.Application):
         m = self.mascot
         menu = Gtk.Menu()
 
-        def item(label, callback):
+        def item(label, callback, sub=None):
             mi = Gtk.MenuItem.new_with_label(label)
             mi.connect("activate", lambda *_: callback())
             menu.append(mi)
@@ -1731,7 +1759,7 @@ class WhaleApp(Gtk.Application):
             mi = Gtk.MenuItem.new_with_label(label)
             sub = Gtk.Menu()
             mi.set_submenu(sub)
-            menu.append(mi)
+            sub.append(mi) if sub is not None else menu.append(mi)
             return sub
 
         def radio(sub, group, label, active, callback):
@@ -1803,7 +1831,21 @@ class WhaleApp(Gtk.Application):
             menu.popup_at_pointer(None)
 
     # -- actions -----------------------------------------------------------------------------
+
     def set_size(self, width):
+
+        scripts = submenu("Scripts")
+        for script in os.listdir(SCRIPTS_PATH):
+            path = os.path.join(SCRIPTS_PATH, script)
+            if not os.access(path, os.X_OK):
+                continue
+
+            script_name = os.path.splitext(script)[0].capitalize()
+            if (proc := RUNNING_PROCS.get(path)) and proc.poll() is None:
+                script_name += " (running)"
+
+            item(script_name, lambda script=script: self.run_script(script), sub=scripts)
+
         if width == int(self.config["size"]) or self._baking:
             return
         self.mascot.say("Hold on, resizing…", 2000)
