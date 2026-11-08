@@ -149,6 +149,11 @@ eval "$vars"
 When she starts a script at startup she sets `WHALECHAN_AUTOSTART=1`, and
 `whalechan input` then skips the form and uses the saved values.
 
+[`scripts/tasks.py`](scripts/tasks.py) keeps you in your work loop: she brings
+up random open `anx` tasks, learns your usual loop of windows, browser sites and
+tmux sessions from your last 100 visits, and nudges you toward the next stop
+when it has been neglected. `scripts/tasks.py --report` shows what she learned.
+
 Under the hood she listens on `$XDG_RUNTIME_DIR/whalechan.sock` (mode 600). Send
 one request per line, as JSON or plain text, and get one JSON reply per line:
 
