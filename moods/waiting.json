@@ -1,0 +1,147 @@
+{
+  "name": "waiting",
+  "order": 65,
+  "meta": {
+    "label": "Waiting",
+    "line": "I'm waiting. Patiently. Tap. Tap. Tap.",
+    "button": true,
+    "icon": "<path d=\"M6 3h12M6 21h12\"/><path d=\"M7.5 3v3c0 2.3 2.3 3.9 4.5 6 2.2-2.1 4.5-3.7 4.5-6V3M7.5 21v-3c0-2.3 2.3-3.9 4.5-6 2.2 2.1 4.5 3.7 4.5 6v3\"/>",
+    "slow": false,
+    "theme": {
+      "accent": "#8a6fd1",
+      "accentDeep": "#5f47a3",
+      "accentSoft": "rgba(138, 111, 209, 0.12)",
+      "button": "#7f64c6",
+      "bubble": "#9b7fe6",
+      "aura": {
+        "stops": [
+          "rgba(200, 182, 255, .3) 0%",
+          "rgba(155, 127, 230, .14) 36%",
+          "rgba(155, 127, 230, .04) 58%",
+          "rgba(155, 127, 230, 0) 72%"
+        ],
+        "duration": "3.2s"
+      },
+      "floorShadow": {
+        "stops": ["rgba(90, 70, 150, .18) 0%", "rgba(90, 70, 150, .06) 48%", "rgba(90, 70, 150, 0) 78%"]
+      },
+      "desktopAccent": [0.608, 0.498, 0.902],
+      "desktopGlow": [0.8, 0.72, 1.0],
+      "variants": {"2": {"floorShadow": {"animation": "shadow-vibrate .21s linear infinite"}}}
+    }
+  },
+  "pose": {
+    "arms": {"l": {"hand": [212, 618]}, "r": {"hand": [394, 618]}, "fist": "both"},
+    "vars": {
+      "hr": "6deg",
+      "hx": "2px",
+      "hy": "0px",
+      "bl-r": "6deg",
+      "bl-y": "2px",
+      "br-r": "6deg",
+      "br-y": "2px",
+      "ix": "7px",
+      "iy": "-6px",
+      "is": "1",
+      "ear": "-4deg",
+      "ahoge": "8deg",
+      "tail": "-4deg",
+      "cy": "0px",
+      "cs": "1",
+      "blush": ".75"
+    }
+  },
+  "layers": {"show": ["m-neutral"]},
+  "motion": {
+    "body": {"keyframes": "tap-bob", "duration": ".8s", "easing": "ease-in-out"},
+    "head": {"keyframes": "head-idle", "duration": "3.2s", "easing": "ease-in-out"},
+    "arm-l.u": "none",
+    "arm-r.u": "none",
+    "leg-r": {"keyframes": "tap", "duration": ".8s", "easing": "ease-in-out"},
+    "tail": {"keyframes": "tail-tap", "duration": "1.6s", "easing": "ease-in-out"},
+    "ahoge": {"keyframes": "ahoge-idle", "duration": "1.6s", "easing": "ease-in-out"}
+  },
+  "keyframes": {
+    "tap": [
+      {"t": [0, 40, 100], "transform": "translateY(0) rotate(0)"},
+      {"t": 18, "transform": "translateY(-16px) rotate(-4deg)", "easing": "ease-in"}
+    ],
+    "tap-bob": [
+      {"t": [0, 40, 100], "transform": "translateY(0) rotate(0)"},
+      {"t": 18, "transform": "translateY(-3px) rotate(-.8deg)", "easing": "ease-in"}
+    ],
+    "stomp-l": [
+      {"t": [0, 50, 100], "transform": "translateY(0) rotate(0)"},
+      {"t": 22, "transform": "translateY(-20px) rotate(5deg)", "easing": "ease-in"}
+    ],
+    "stomp-r": [
+      {"t": [0, 50, 100], "transform": "translateY(0) rotate(0)"},
+      {"t": 72, "transform": "translateY(-20px) rotate(-5deg)", "easing": "ease-in"}
+    ],
+    "head-shake": [
+      {"t": [0, 100], "transform": "rotate(4deg)"},
+      {"t": 50, "transform": "rotate(8deg)"}
+    ]
+  },
+  "variants": {
+    "1": {
+      "pose": {
+        "vars": {
+          "hr": "-4deg",
+          "hx": "-2px",
+          "bl-r": "12deg",
+          "bl-y": "4px",
+          "br-r": "12deg",
+          "br-y": "4px",
+          "ix": "-6px",
+          "iy": "0px",
+          "ear": "-12deg",
+          "ahoge": "-6deg",
+          "tail": "-8deg",
+          "blush": ".9"
+        }
+      },
+      "layers": {"show": ["m-sad", "lid-smug"], "hide": ["lash-default"]},
+      "motion": {
+        "body": {"keyframes": "tap-bob", "duration": ".45s", "easing": "ease-in-out"},
+        "head": {"keyframes": "head-shake", "duration": "1.8s", "easing": "ease-in-out"},
+        "leg-r": {"keyframes": "tap", "duration": ".45s", "easing": "ease-in-out"},
+        "tail": {"keyframes": "tail-tap", "duration": ".9s", "easing": "ease-in-out"},
+        "ear-l": {"keyframes": "ear-idle", "duration": ".9s", "easing": "ease-in-out"},
+        "ear-r": {"keyframes": "ear-idle", "duration": ".9s", "easing": "ease-in-out"}
+      }
+    },
+    "2": {
+      "pose": {
+        "vars": {
+          "hr": "0deg",
+          "hx": "0px",
+          "hy": "6px",
+          "bl-r": "20deg",
+          "bl-y": "6px",
+          "br-r": "20deg",
+          "br-y": "6px",
+          "ix": "0px",
+          "iy": "2px",
+          "is": ".86",
+          "ear": "-18deg",
+          "ahoge": "-10deg",
+          "tail": "-6deg",
+          "blush": "1"
+        }
+      },
+      "layers": {"show": ["m-angry", "lid-angry", "fx-angry"], "hide": ["lash-default"]},
+      "motion": {
+        "body": {"keyframes": "stomp", "duration": ".36s", "easing": "cubic-bezier(.3,.7,.4,1)"},
+        "head": {"keyframes": "rage-shake", "duration": ".16s", "easing": "linear"},
+        "leg-l": {"keyframes": "stomp-l", "duration": ".72s", "easing": "ease-in-out"},
+        "leg-r": {"keyframes": "stomp-r", "duration": ".72s", "easing": "ease-in-out"},
+        "tail": {"keyframes": "tail-thrash", "duration": ".36s", "easing": "ease-in-out"},
+        "fluke": {"keyframes": "fluke-thrash", "duration": ".36s", "easing": "ease-in-out", "delay": "-.1s"},
+        "ear-l": {"keyframes": "ear-buzz", "duration": ".14s", "easing": "linear"},
+        "ear-r": {"keyframes": "ear-buzz", "duration": ".14s", "easing": "linear"},
+        "ahoge": {"keyframes": "ahoge-buzz", "duration": ".12s", "easing": "linear"}
+      }
+    }
+  }
+}

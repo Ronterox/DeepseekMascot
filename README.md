@@ -101,7 +101,7 @@ returns instantly. Symlink it onto your `PATH` if you like:
 ```bash
 whalechan start                          # launch in the background (no-op if running)
 whalechan say "Build passed" -m happy --for 8
-whalechan mood thinking                  # neutral angry smug happy sad thinking sleepy dance
+whalechan mood thinking                  # neutral angry smug happy sad thinking waiting sleepy dance
 whalechan mood thinking --strain 0       # hold a strain level instead of escalating
 whalechan react success                  # working success failure error attention idle
 whalechan react fail "3 tests broke"     # aliases: start done pass fail crash waiting …
@@ -272,7 +272,7 @@ const whale = document.querySelector("deepseek-mascot");
 
 whale.say("Custom line from your app.");
 whale.speak("Alias of say().");
-whale.setMood("happy");        // neutral | angry | smug | happy | sad | thinking | sleepy | dance
+whale.setMood("happy");        // neutral | angry | smug | happy | sad | thinking | waiting | sleepy | dance
 whale.setMood("sad", { announce: false }); // switch pose without a speech bubble
 whale.mood;                    // current mood
 whale.feed();                  // rice particles + a random rice-related line
@@ -299,7 +299,7 @@ whale.addEventListener("whale-mood", (event) => {
   console.log(event.detail.mood);
 });
 
-// "thinking" escalates on its own: strain 1 after ~2.8s, strain 2 (overthinking) after ~6.8s
+// "thinking" and "waiting" escalate on their own: strain 1 after ~2.8s, strain 2 after ~6.8s
 whale.addEventListener("whale-strain", (event) => {
   console.log(event.detail.mood, event.detail.strain);
 });
@@ -334,6 +334,9 @@ Each mood is a **full-body pose**, not just a face swap:
 | `thinking` (`data-strain="0"`) | hand on chin, other arm across her body, tapping | glance up, "o" mouth, thought bubble, `?` |
 | `thinking` (`data-strain="1"`) | hands pressed to her temples, shaking | `> <` eyes, sweat drop |
 | `thinking` (`data-strain="2"`) | overthinking: arms flailing, vibrating, spinning ahoge | swirl eyes, steam, scribbled thought, `?!` |
+| `waiting` (`data-strain="0"`) | hands on hips, elbows out, patiently tapping one foot | glancing up at the clock, small smile |
+| `waiting` (`data-strain="1"`) | impatient: faster tapping, head shaking, ears drooping | half-lidded side-eye, pout |
+| `waiting` (`data-strain="2"`) | fuming: stomping both feet, vibrating, tail thrashing | angry lids, fang, 💢 mark, steam puffs |
 | `sleepy` | dozing on her feet hugging a whale plush; slow breathing, head nods off and jerks back up | closed eyes, breathing "o" mouth, snot bubble, floating Z's |
 | `dance` | 8-count loop: one fist thrown up and pumped while the opposite leg steps out, then the other side; bounces on every count | happy closed eyes, open smile, floating music notes |
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1060" role="img" aria-labelledby="title desc" class="whale-chan" data-mood="neutral" data-strain="0">
   <title id="title">Whale-chan</title>
-  <desc id="desc">A chibi DeepSeek whale maid drawn as rigged vector art. Her body, face, tail, fin-ears and ahoge are posed and animated per mood: neutral, angry, smug, happy, sad, thinking, sleepy and dance.</desc>
+  <desc id="desc">A chibi DeepSeek whale maid drawn as rigged vector art. Her body, face, tail, fin-ears and ahoge are posed and animated per mood: neutral, angry, smug, happy, sad, thinking, waiting, sleepy and dance.</desc>
   <defs>
     <linearGradient id="g-hair-back" gradientUnits="userSpaceOnUse" x1="0" y1="140" x2="0" y2="705">
       <stop offset="0" stop-color="#28396f"/><stop offset=".38" stop-color="#30488a"/>
@@ -289,6 +289,42 @@
     .whale-chan[data-mood="thinking"][data-strain="2"] .ahoge-anim { animation: ahoge-spin .6s linear infinite; }
     .whale-chan[data-mood="thinking"][data-strain="2"] .ear-flap-l { animation: ear-buzz .14s linear infinite; }
     .whale-chan[data-mood="thinking"][data-strain="2"] .ear-flap-r { animation: ear-buzz .14s linear infinite; }
+    /* ---------- waiting ---------- */
+    .whale-chan[data-mood="waiting"] { --lu:68.3deg;--lf:-108.6deg;--ru:68.3deg;--rf:-108.6deg;--lfist:1;--rfist:1;--hr:6deg;--hx:2px;--hy:0px;--bl-r:6deg;--bl-y:2px;--br-r:6deg;--br-y:2px;--ix:7px;--iy:-6px;--is:1;--ear:-4deg;--ahoge:8deg;--tail:-4deg;--cy:0px;--cs:1;--blush:.75; }
+    .whale-chan[data-mood="waiting"] .m-neutral { opacity: 1; }
+    .whale-chan[data-mood="waiting"] .char-anim { animation: waiting-tap-bob .8s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"] .head-anim { animation: head-idle 3.2s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"] .arm-l .u-anim { animation: none; }
+    .whale-chan[data-mood="waiting"] .arm-r .u-anim { animation: none; }
+    .whale-chan[data-mood="waiting"] .leg-r { animation: waiting-tap .8s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"] .tail-wag { animation: tail-tap 1.6s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"] .ahoge-anim { animation: ahoge-idle 1.6s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] { --hr:-4deg;--hx:-2px;--bl-r:12deg;--bl-y:4px;--br-r:12deg;--br-y:4px;--ix:-6px;--iy:0px;--ear:-12deg;--ahoge:-6deg;--tail:-8deg;--blush:.9; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] .m-sad, .whale-chan[data-mood="waiting"][data-strain="1"] .lid-smug { opacity: 1; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] .lash-default { opacity: 0; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] .char-anim { animation: waiting-tap-bob .45s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] .head-anim { animation: waiting-head-shake 1.8s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] .leg-r { animation: waiting-tap .45s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] .tail-wag { animation: tail-tap .9s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] .ear-flap-l { animation: ear-idle .9s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="1"] .ear-flap-r { animation: ear-idle .9s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] { --hr:0deg;--hx:0px;--hy:6px;--bl-r:20deg;--bl-y:6px;--br-r:20deg;--br-y:6px;--ix:0px;--iy:2px;--is:.86;--ear:-18deg;--ahoge:-10deg;--tail:-6deg;--blush:1; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .m-angry, .whale-chan[data-mood="waiting"][data-strain="2"] .lid-angry, .whale-chan[data-mood="waiting"][data-strain="2"] .fx-angry { opacity: 1; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .lash-default { opacity: 0; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .char-anim { animation: stomp .36s cubic-bezier(.3,.7,.4,1) infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .head-anim { animation: rage-shake .16s linear infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .leg-l { animation: waiting-stomp-l .72s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .leg-r { animation: waiting-stomp-r .72s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .tail-wag { animation: tail-thrash .36s ease-in-out infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .fluke { animation: fluke-thrash .36s ease-in-out -.1s infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .ear-flap-l { animation: ear-buzz .14s linear infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .ear-flap-r { animation: ear-buzz .14s linear infinite; }
+    .whale-chan[data-mood="waiting"][data-strain="2"] .ahoge-anim { animation: ahoge-buzz .12s linear infinite; }
+    @keyframes waiting-tap { 0%, 40%, 100% { transform: translateY(0) rotate(0); } 18% { transform: translateY(-16px) rotate(-4deg); animation-timing-function: ease-in; } }
+    @keyframes waiting-tap-bob { 0%, 40%, 100% { transform: translateY(0) rotate(0); } 18% { transform: translateY(-3px) rotate(-.8deg); animation-timing-function: ease-in; } }
+    @keyframes waiting-stomp-l { 0%, 50%, 100% { transform: translateY(0) rotate(0); } 22% { transform: translateY(-20px) rotate(5deg); animation-timing-function: ease-in; } }
+    @keyframes waiting-stomp-r { 0%, 50%, 100% { transform: translateY(0) rotate(0); } 72% { transform: translateY(-20px) rotate(-5deg); animation-timing-function: ease-in; } }
+    @keyframes waiting-head-shake { 0%, 100% { transform: rotate(4deg); } 50% { transform: rotate(8deg); } }
     /* ---------- sleepy ---------- */
     .whale-chan[data-mood="sleepy"] { --lu:40deg;--lf:-94.1deg;--ru:40deg;--rf:-94.1deg;--lfist:0;--rfist:0;--hr:9deg;--hx:5px;--hy:12px;--bl-r:-6deg;--bl-y:3px;--br-r:-6deg;--br-y:3px;--ix:0px;--iy:0px;--is:1;--ear:22deg;--ahoge:38deg;--tail:16deg;--cy:4px;--cs:.985;--blush:.95; }
     .whale-chan[data-mood="sleepy"] .m-sleepy, .whale-chan[data-mood="sleepy"] .eye-sleep, .whale-chan[data-mood="sleepy"] .fx-sleepy, .whale-chan[data-mood="sleepy"] .pillow { opacity: 1; }

@@ -99,7 +99,7 @@ used for the ruler and snapping). The compiler and the runtime registry ignore i
 
 ### variants
 
-`variants` override the mood per `data-strain` value (only thinking uses them). A variant may
+`variants` override the mood per `data-strain` value (thinking and waiting use them). A variant may
 contain `pose`, `layers`, `motion` and `css`; everything else is inherited from the mood through
 the cascade. `pose.arms` merges over the mood's arms (so restate `fist` if it changes); `vars`
 only needs what differs. Variant `"0"` also matches an SVG without `data-strain`. Variants use

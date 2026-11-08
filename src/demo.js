@@ -119,10 +119,16 @@
     applyMood(event.detail.mood);
   });
 
+  // Word shown for each strain level of the moods that escalate.
+  const STRAIN_LABELS = {
+    thinking: ["thinking", "thinking", "overthinking"],
+    waiting: ["waiting", "impatient", "fuming"]
+  };
+
   mascot.addEventListener("whale-strain", (event) => {
-    if (event.detail.mood !== "thinking") return;
-    const level = event.detail.strain;
-    const label = level >= 2 ? "overthinking" : "thinking";
+    const labels = STRAIN_LABELS[event.detail.mood];
+    if (!labels) return;
+    const label = labels[Math.min(event.detail.strain, labels.length - 1)];
     if (moodName) moodName.textContent = label;
     if (moodWord) {
       moodWord.textContent = label;
