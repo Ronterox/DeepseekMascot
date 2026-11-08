@@ -3,8 +3,9 @@ import { realpathSync } from "fs"
 import path from "path"
 
 // Whale-chan reacts to OpenCode sessions: she thinks while the agent works,
-// cheers when a turn succeeds, gets angry when it fails, and hops when OpenCode
-// is waiting on you (permission prompts and questions).
+// cheers when a turn succeeds, gets angry when it fails, and hops and waits
+// (foot tapping, more annoyed the longer it takes) while OpenCode is waiting on
+// you (permission prompts and questions). Once you answer she gets back to thinking.
 //
 // Talks to the desktop mascot through the `whalechan` CLI, which exits quietly
 // when she isn't running. Override the CLI path with WHALECHAN_BIN.
@@ -104,6 +105,12 @@ export default Plugin.define({
 							break
 						case "form.created":
 							react("attention", key, "OpenCode has a question for you.")
+							break
+						case "permission.replied":
+						case "form.replied":
+						case "form.cancelled":
+							// Only ends a wait: does nothing unless she is in the waiting mood.
+							react("resume", key, "", true)
 							break
 					}
 				}

@@ -149,8 +149,9 @@ whalechan -q react success "Committed $(git log -1 --format=%h). Neat."
 
 **OpenCode.** [`integrations/opencode/whalechan`](integrations/opencode/whalechan/index.ts)
 is a server plugin: she thinks while a session works, cheers with the session
-title when a turn succeeds, gets angry when it fails, and hops when OpenCode asks
-for permission or has a question. Subagent sessions are ignored. Install it
+title when a turn succeeds, gets angry when it fails, and hops and waits (foot
+tapping, getting more annoyed) while OpenCode asks for permission or has a
+question, then gets back to thinking once you answer. Subagent sessions are ignored. Install it
 globally with a symlink (OpenCode loads `~/.config/opencode/plugins/` automatically):
 
 ```bash
@@ -165,15 +166,19 @@ ln -s "$PWD/integrations/opencode/whalechan" ~/.config/opencode/plugins/whalecha
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "whalechan -q react working --quiet-line 2>/dev/null || true" }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "~/.claude/hooks/whalechan-react.sh success" }] }],
     "StopFailure": [{ "hooks": [{ "type": "command", "command": "whalechan -q react error 2>/dev/null || true" }] }],
-    "Notification": [{ "hooks": [{ "type": "command", "command": "~/.claude/hooks/whalechan-react.sh attention" }] }]
+    "Notification": [{ "hooks": [{ "type": "command", "command": "~/.claude/hooks/whalechan-react.sh attention" }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "whalechan -q react resume 2>/dev/null || true", "async": true }] }]
   }
 }
 ```
 
 [`integrations/claude-code/whalechan-react.sh`](integrations/claude-code/whalechan-react.sh)
-wraps `whalechan -q react` and keeps her quiet on Stop and idle prompts while
-background agents or shells are still running, so she only cheers once the work
-is really done. It asks a `bg-pending <transcript>` helper for the count
+wraps `whalechan -q react`. On Stop and idle prompts while background agents or
+shells are still running she waits for them (`react waiting`) instead of
+cheering, so she only cheers once the work is really done. Permission prompts and
+idle prompts make her wait for you (`attention`); the `PostToolUse` hook sends
+`resume`, so once you approve a tool (or a background result arrives and Claude
+picks the work back up) she goes back to thinking. It asks a `bg-pending <transcript>` helper for the count
 (`~/.claude/hooks/bg-pending` by default, or set `WHALECHAN_BG_PENDING`); without
 the helper she reacts every time, as with plain `whalechan -q react`. Link it in:
 
