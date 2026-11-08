@@ -6,6 +6,7 @@
   whalechan mood thinking              moods: {moods}
   whalechan react success              events: working success failure error attention waiting resume idle
   whalechan run -- make test           thinking while it runs, then happy or sad
+  whalechan input "Blink" GAP=60 MSG=hi  ask for values in a window, print them as exports
   whalechan feed | show | hide | toggle | home | sleep | wake | status | quit
 
 Exit codes: 0 ok, 1 rejected request, 3 not running. With --quiet every failure
@@ -16,6 +17,7 @@ hooks can never slow down or break the tool that calls them.
 import argparse
 import json
 import os
+import re
 import shlex
 import socket
 import subprocess
@@ -27,6 +29,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from protocol import EVENTS, EVENT_ALIASES, MOODS, socket_path  # noqa: E402
 
+INPUTS_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "whalechan" / "inputs"
 NOT_RUNNING = 3
 TIMEOUT = 3.0
 QUIET_TIMEOUT = 0.75
@@ -138,6 +141,59 @@ def run_command(argv, quiet_lines):
     return code
 
 
+def ask_inputs(title, specs):
+    """Ask for NAME=default values in a window, remembering the last answers per title.
+
+    Prints `export NAME='value'` lines for the calling script to eval; exits 1 if
+    cancelled. Scripts the mascot runs at startup (WHALECHAN_AUTOSTART=1) get the
+    saved values without a window.
+    """
+    values = {}
+    for spec in specs:
+        name, _, default = spec.partition("=")
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            print(f"whalechan input: {name!r} is not a valid variable name", file=sys.stderr)
+            return 2
+        values[name] = default
+    path = INPUTS_DIR / (re.sub(r"[^\w.-]+", "_", title) + ".json")
+    try:
+        values.update({k: str(v) for k, v in json.loads(path.read_text()).items() if k in values})
+    except (OSError, ValueError, AttributeError):
+        pass
+
+    if values and not os.environ.get("WHALECHAN_AUTOSTART"):
+        import gi
+        gi.require_version("Gtk", "3.0")
+        from gi.repository import Gtk
+
+        dialog = Gtk.Dialog(title=title, resizable=False)
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Run", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        dialog.set_keep_above(True)
+        grid = Gtk.Grid(row_spacing=6, column_spacing=12, margin=12)
+        entries = {}
+        for row, (name, value) in enumerate(values.items()):
+            grid.attach(Gtk.Label(label=name.replace("_", " ").capitalize(), xalign=0), 0, row, 1, 1)
+            entries[name] = Gtk.Entry(text=value, activates_default=True, width_chars=30)
+            grid.attach(entries[name], 1, row, 1, 1)
+        dialog.get_content_area().add(grid)
+        dialog.show_all()
+        ok = dialog.run() == Gtk.ResponseType.OK
+        values = {name: entry.get_text() for name, entry in entries.items()}
+        dialog.destroy()
+        if not ok:
+            return 1
+        try:
+            INPUTS_DIR.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(values, indent=2))
+        except OSError as exc:
+            print(f"whalechan input: could not save values: {exc}", file=sys.stderr)
+
+    for name, value in values.items():
+        print(f"export {name}={shlex.quote(value)}")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="whalechan", description=__doc__.split("\n\n")[0],
@@ -184,6 +240,12 @@ def main(argv=None):
     p.add_argument("--silent", action="store_true", help="react with moods only, no lines")
     p.add_argument("command", nargs=argparse.REMAINDER)
 
+    p = sub.add_parser("input", help="ask for values in a window and print them as shell exports",
+                       description='For scripts: vars=$(whalechan input "Title" NAME=default ...) || exit; '
+                                   'eval "$vars". The last answers are remembered per title.')
+    p.add_argument("title", help="window title; also the key the answers are saved under")
+    p.add_argument("vars", nargs="+", metavar="NAME=default")
+
     p = sub.add_parser("move", help="place her at screen coordinates (she perches on a window top there)")
     p.add_argument("x", type=float)
     p.add_argument("y", type=float)
@@ -205,6 +267,8 @@ def main(argv=None):
         return start(extra)
     if args.cmd == "run":
         return run_command(args.command, args.silent)
+    if args.cmd == "input":
+        return ask_inputs(args.title, args.vars)
 
     payload = {"cmd": args.cmd}
     if args.cmd == "say":
