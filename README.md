@@ -130,6 +130,25 @@ whalechan feed | show | hide | toggle | home | status | quit
 - If she isn't running, commands exit with status 3; add `-q` to exit 0 silently
   (useful in hooks).
 
+### Scripts
+
+Executable files in [`scripts/`](scripts) show up under **Scripts** in her
+right-click menu and run in the background. Clicking one that is already running
+asks whether to stop or restart it; stopping kills everything the script started.
+Tick it under **Scripts ▸ Run at startup** to have it start with her.
+
+A script that needs settings asks for them itself with `whalechan input`, which
+opens a small form prefilled with the last answers (saved per title in
+`~/.config/whalechan/inputs/`) and prints them as shell exports:
+
+```bash
+vars=$(whalechan input "Blink reminder" MIN_GAP=30 MAX_GAP=210 MESSAGE="Blink!") || exit  # Cancel exits 1
+eval "$vars"
+```
+
+When she starts a script at startup she sets `WHALECHAN_AUTOSTART=1`, and
+`whalechan input` then skips the form and uses the saved values.
+
 Under the hood she listens on `$XDG_RUNTIME_DIR/whalechan.sock` (mode 600). Send
 one request per line, as JSON or plain text, and get one JSON reply per line:
 
