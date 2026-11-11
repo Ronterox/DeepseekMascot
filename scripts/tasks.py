@@ -19,6 +19,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter
 from datetime import datetime
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WHALECHAN = str(ROOT / "desktop" / "whalechan")
 STATE_PATH = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")) / "whalechan" / "tasks.json"
 DEFAULT_TASKS = Path(os.environ.get("DOINGO_PATH", Path.home() / "Documents/Projects/MarkdownProjects/ANX/doing"))
+DEFAULT_TASKS_FILE = DEFAULT_TASKS / "what_was_I_doing.txt"
 
 POLL = 2            # seconds between focus checks
 MIN_STAY = 5        # focus shorter than this is passing through, not a visit
@@ -72,31 +74,77 @@ LATE_LINES = [  # the next stop is more than three times overdue
 ]
 
 
+def whalechan(*args, timeout=5):
+    """Run the CLI, returning the completed process or None if it couldn't run."""
+    try:
+        return subprocess.run([WHALECHAN, *args], capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def get_status():
+    """Whale-chan's status dict, or None if she isn't running or ready."""
+    out = whalechan("--json", "status")
+    try:
+        data = json.loads(out.stdout) if out else {}
+    except ValueError:
+        return None
+    return data if data.get("ok") else None
+
+
+def available(status):
+    """Whether she is awake and on screen, so a line won't be missed."""
+    return bool(status and not status.get("sleeping") and status.get("visible"))
+
+
+def bubble_seconds(text):
+    """How long the daemon keeps a speech bubble up by default."""
+    return max(3.8, min(11.0, len(text) * 0.062))
+
+
+def pick(lines, **fields):
+    """A random line from `lines`, formatted with `fields`."""
+    return random.choice(lines).format(**fields)
+
+
+def restore_mood(temporary, previous):
+    """Put the mood back if it is still the one we borrowed.
+
+    The daemon reverts a `--for` mood on its own, but a later `react waiting`
+    (an agent hook, say) clears that timer and leaves her stuck waiting. Only
+    restoring while the mood is still ours means we never undo a mood that
+    somebody else set in the meantime.
+    """
+    status = get_status()
+    if status and status.get("mood") == temporary:
+        whalechan("-q", "mood", previous)
+
+
 def say(text, mood=None):
     """Speak, borrowing a mood only when she isn't busy with another one (thinking, waiting…)."""
-    try:
-        status = json.loads(subprocess.run([WHALECHAN, "--json", "status"], capture_output=True,
-                                           text=True, timeout=5).stdout)
-    except (OSError, ValueError, subprocess.TimeoutExpired):
+    status = get_status()
+    if not available(status):
         return False
-    if not status.get("ok") or status.get("sleeping") or not status.get("visible"):
+    previous = status.get("mood", "neutral")
+    seconds = bubble_seconds(text)
+    borrowed = mood and mood != "neutral" and previous == "neutral"
+    cmd = ["-q", "say", text, "-d", f"{seconds:.1f}"]
+    if borrowed:
+        cmd += ["-m", mood, "--for", f"{seconds:.1f}"]
+    if whalechan(*cmd) is None:
         return False
-    cmd = [WHALECHAN, "-q", "say", text]
-    if mood and mood != "neutral" and status.get("mood") == "neutral":
-        cmd += ["-m", mood, "--for", "8"]
-    try:
-        subprocess.run(cmd, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        return False
+    if borrowed:
+        timer = threading.Timer(seconds + 0.25, restore_mood, args=(mood, previous))
+        timer.daemon = True
+        timer.start()
     return True
 
 
 def ask_settings():
-    defaults = {"TASKS_FILE": str(DEFAULT_TASKS / "what_was_I_doing.txt"), "TASK_EVERY": "20", "LOOP_AFTER": "15"}
-    out = subprocess.run([WHALECHAN, "input", "Tasks", *(f"{k}={v}" for k, v in defaults.items())],
-                         stdout=subprocess.PIPE, text=True)
-    if out.returncode:
-        sys.exit(out.returncode)
+    defaults = {"TASKS_FILE": str(DEFAULT_TASKS_FILE), "TASK_EVERY": "20", "LOOP_AFTER": "15"}
+    out = whalechan("input", "Tasks", *(f"{k}={v}" for k, v in defaults.items()), timeout=None)
+    if out is None or out.returncode:
+        sys.exit(out.returncode if out else 1)
     values = dict(defaults)
     for line in out.stdout.splitlines():
         name, _, value = shlex.split(line)[1].partition("=")
@@ -136,14 +184,18 @@ def open_tasks(path):
     return tasks
 
 
+def plural(n, unit):
+    return f"{n} {unit}{'s' * (n != 1)}"
+
+
 def human(seconds):
     minutes = int(seconds // 60)
     if minutes < 60:
-        return f"{minutes} minute{'s' * (minutes != 1)}"
+        return plural(minutes, "minute")
     hours = minutes // 60
     if hours < 48:
-        return f"{hours} hour{'s' * (hours != 1)}"
-    return f"{hours // 24} days"
+        return plural(hours, "hour")
+    return plural(hours // 24, "day")
 
 
 # -- where you are -------------------------------------------------------------------------
@@ -260,7 +312,7 @@ def report():
     loop = top_loop(state["history"])
     print("Loop:", " -> ".join(loop + loop[:1]) if loop else "not enough history yet")
     print("Last visits:", " -> ".join(state["history"][-12:]))
-    tasks = open_tasks(DEFAULT_TASKS / "what_was_I_doing.txt")
+    tasks = open_tasks(DEFAULT_TASKS_FILE)
     print(f"Open tasks: {len(tasks)}")
 
 
@@ -307,7 +359,8 @@ def main():
                 continue
             if now >= next_task:
                 next_task = now + random.uniform(0.5, 1.5) * task_every
-                fresh = [t for t in open_tasks(tasks_file) if t[1] not in recent_tasks] or open_tasks(tasks_file)
+                tasks = open_tasks(tasks_file)
+                fresh = [t for t in tasks if t[1] not in recent_tasks] or tasks
                 if fresh:
                     started, task = random.choice(fresh)
                     recent_tasks = (recent_tasks + [task])[-5:]
@@ -320,9 +373,9 @@ def main():
             if target and target != here and seen and now - seen >= loop_after \
                     and now - nudged.get(target, 0) >= loop_after:
                 late = now - seen >= 3 * loop_after
-                line = random.choice(LATE_LINES if late else LOOP_LINES)
+                line = pick(LATE_LINES if late else LOOP_LINES, place=target, ago=human(now - seen))
                 nudged[target] = now
-                if say(line.format(place=target, ago=human(now - seen)), "angry" if late else "waiting"):
+                if say(line, "angry" if late else "waiting"):
                     last_talk = now
     finally:
         save_state(state)
