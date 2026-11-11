@@ -17,7 +17,7 @@ while true; do
 
 	whalechan move $x $y
 	whalechan mood angry
-	whalechan say "$MESSAGE"
+	whalechan say -d 2.5 "$MESSAGE"
 	sleep 3
 	whalechan move $wx $wy
 	whalechan mood $mood
