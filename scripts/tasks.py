@@ -107,17 +107,31 @@ def pick(lines, **fields):
     return random.choice(lines).format(**fields)
 
 
-def restore_mood(temporary, previous):
+_restore_lock = threading.Lock()
+_restore_timer = None
+
+
+def restore_mood(borrowed, previous="neutral"):
     """Put the mood back if it is still the one we borrowed.
 
-    The daemon reverts a `--for` mood on its own, but a later `react waiting`
-    (an agent hook, say) clears that timer and leaves her stuck waiting. Only
-    restoring while the mood is still ours means we never undo a mood that
-    somebody else set in the meantime.
+    Anything else (a `react waiting` from an agent hook, a mood you picked by
+    hand) owns the mood now, so we leave it alone.
     """
     status = get_status()
-    if status and status.get("mood") == temporary:
+    if status and status.get("mood") == borrowed:
         whalechan("-q", "mood", previous)
+
+
+def schedule_restore(delay, borrowed, previous="neutral"):
+    """Schedule `restore_mood` after `delay` seconds, replacing any pending timer."""
+    global _restore_timer
+    with _restore_lock:
+        if _restore_timer is not None:
+            _restore_timer.cancel()
+        timer = threading.Timer(delay, restore_mood, args=(borrowed, previous))
+        timer.daemon = True
+        timer.start()
+        _restore_timer = timer
 
 
 def say(text, mood=None):
@@ -125,18 +139,17 @@ def say(text, mood=None):
     status = get_status()
     if not available(status):
         return False
-    previous = status.get("mood", "neutral")
+
     seconds = bubble_seconds(text)
-    borrowed = mood and mood != "neutral" and previous == "neutral"
-    cmd = ["-q", "say", text, "-d", f"{seconds:.1f}"]
-    if borrowed:
-        cmd += ["-m", mood, "--for", f"{seconds:.1f}"]
-    if whalechan(*cmd) is None:
+    previous = status.get("mood", "neutral")
+    borrowed = mood if mood and mood != "neutral" and previous == "neutral" else None
+    mood_flags = ["-m", borrowed] if borrowed else []
+
+    out = whalechan("-q", "say", text, "-d", f"{seconds:.1f}", *mood_flags)
+    if out is None or out.returncode:
         return False
     if borrowed:
-        timer = threading.Timer(seconds + 0.25, restore_mood, args=(mood, previous))
-        timer.daemon = True
-        timer.start()
+        schedule_restore(seconds + 0.25, borrowed, previous)
     return True
 
 
