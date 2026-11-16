@@ -67,7 +67,7 @@ How it works:
 - **Window.** An override-redirect popup: always on top, on every workspace,
   never focused, never tiled by Pop Shell, and absent from the taskbar and
   Alt-Tab. Pass `--managed` for a regular keep-above utility window instead.
-- Settings (position, size, mood, opacity, glow) persist in
+- Settings (position, size, mood picked from the menu, opacity, glow) persist in
   `~/.config/whalechan/config.json`. Launching it again while it is running just
   wakes the existing instance.
 
@@ -135,6 +135,9 @@ whalechan log -f                         # follow requests, who sent them, and m
 - `react --quiet-line` changes mood without a speech bubble; `--key ID` drops
   repeats of the same key within 3 s (for senders that report events twice).
 - `run` passes the command's exit code through, so it can wrap anything.
+- Moods set by commands (`mood`, `say -m`, `react`) last until something else
+  changes them but are never saved; only a mood you pick from her menu becomes
+  the one she starts with.
 - If she isn't running, commands exit with status 3; add `-q` to exit 0 silently
   (useful in hooks).
 

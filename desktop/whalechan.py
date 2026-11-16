@@ -1160,7 +1160,8 @@ class Mascot(Gtk.Window):
         `escalate` delays (seconds);
         pass escalate=None to hold `strain`. With `revert_after`, she drops back to
         neutral after that many seconds. Only persistent, non-temporary moods are
-        saved as the startup mood.
+        saved as the startup mood: the ones you pick from the menu, never ones that
+        scripts and hooks set over the socket.
         """
         mood = mood if mood in MOODS else "neutral"
         changed = mood != self.mood or self.sleeping
@@ -1824,7 +1825,7 @@ class WhaleApp(Gtk.Application):
             if req.get("mood"):
                 if req["mood"] not in MOODS:
                     return {"ok": False, "error": f"unknown mood {req['mood']!r}"}
-                m.set_mood(req["mood"], announce=False, revert_after=revert)
+                m.set_mood(req["mood"], announce=False, revert_after=revert, persist=False)
             duration = req.get("duration")
             text = m.say(str(req.get("text") or "") or None,
                          int(float(duration) * 1000) if duration else None)
@@ -1837,7 +1838,7 @@ class WhaleApp(Gtk.Application):
             m.set_mood(mood, announce=bool(req.get("announce")),
                        strain=int(strain) if strain is not None else 0,
                        escalate=None if strain is not None else (2.8, 6.8),
-                       revert_after=revert)
+                       revert_after=revert, persist=False)
             if req.get("text"):
                 m.say(str(req["text"]))
             return {"ok": True, "mood": mood}
