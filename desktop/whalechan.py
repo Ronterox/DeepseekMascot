@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 import warnings
+from datetime import datetime
 from pathlib import Path
 
 os.environ.setdefault("GDK_BACKEND", "x11")
@@ -31,7 +32,8 @@ gi.require_version("PangoCairo", "1.0")
 from gi.repository import Gdk, Gio, GLib, Gtk, Pango, PangoCairo  # noqa: E402
 import cairo  # noqa: E402
 
-from protocol import EVENTS, MOOD_REGISTRY, MOODS, normalize_event, parse_plain, socket_path, strains  # noqa: E402
+from protocol import (EVENTS, MOOD_REGISTRY, MOODS, events_log_path, normalize_event,  # noqa: E402
+                      parse_plain, socket_path, strains)
 
 try:
     from x11watch import X11Watch  # noqa: E402
@@ -186,6 +188,54 @@ SLOW_STATES = {f"{m['name']}-{level}" if level else m["name"]
 PERCH_SNAP = 36                  # how close her feet must be to a window top to perch
 
 GREETING = "Hi, I'm Whale-chan. Drag me anywhere. Right-click me for options."
+
+
+EVENTS_LOG = events_log_path()
+EVENTS_LOG_MAX = 2_000_000  # bytes; then it moves to events.log.1 and starts over
+
+
+def log_event(kind, **fields):
+    """Append one JSON line to the debug log (`whalechan log` reads it). Never raises."""
+    entry = {"ts": datetime.now().isoformat(timespec="milliseconds"), "kind": kind, **fields}
+    try:
+        EVENTS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        if EVENTS_LOG.exists() and EVENTS_LOG.stat().st_size > EVENTS_LOG_MAX:
+            EVENTS_LOG.replace(EVENTS_LOG.with_name(EVENTS_LOG.name + ".1"))
+        with EVENTS_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def _caller_name(depth=2):
+    """Name of the function `depth` frames up: who asked for a mood or state change."""
+    try:
+        return sys._getframe(depth).f_code.co_name
+    except ValueError:
+        return None
+
+
+def process_chain(pid, depth=4):
+    """The client process and its ancestors, as ((pid, cmd), ...), read from /proc.
+
+    Stops at this mascot process (a script she launched) or at init.
+    """
+    chain = []
+    while pid and pid > 1 and len(chain) < depth:
+        if pid == os.getpid():
+            chain.append((pid, "whalechan daemon"))
+            break
+        try:
+            argv = [a.decode(errors="replace") for a in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if a]
+            ppid = int(Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+        # interpreter + script paths are long and always the same: keep their names
+        argv = [os.path.basename(a) if i < 2 and a.startswith("/") else a for i, a in enumerate(argv)]
+        cmd = " ".join(argv)
+        chain.append((pid, cmd if len(cmd) <= 200 else cmd[:199] + "…"))
+        pid = ppid
+    return tuple(chain)
 
 
 def ease_out_back(t):
@@ -935,6 +985,9 @@ class Mascot(Gtk.Window):
         """
         if state == self.state:
             return
+        via = _caller_name()
+        if via != "update_gaze":
+            log_event("state", old=self.state, new=state, via=via)
         index = self.paused_frame if self.paused_frame is not None else self.frame
         if poof:
             fade = min(fade, 0.14)  # swap during the squash, hidden by the smoke
@@ -1111,6 +1164,9 @@ class Mascot(Gtk.Window):
         """
         mood = mood if mood in MOODS else "neutral"
         changed = mood != self.mood or self.sleeping
+        log_event("mood", old=self.mood, new=mood, strain=strain,
+                  escalate=escalate if STRAINS.get(mood) else None,
+                  revert_after=revert_after, persist=persist and not revert_after, via=_caller_name())
         self.sleeping = False
         for timer in self._think_timers:
             GLib.source_remove(timer)
@@ -1393,7 +1449,11 @@ class ControlServer:
 
     def _on_incoming(self, _service, connection, _source):
         reader = Gio.DataInputStream.new(connection.get_input_stream())
-        client = (connection, reader)
+        try:  # SO_PEERCRED: the client is still connected, so its /proc entry is there
+            pid = connection.get_socket().get_credentials().get_unix_pid()
+        except (GLib.Error, AttributeError, TypeError):
+            pid = None
+        client = (connection, reader, process_chain(pid) if pid else ())
         self._clients.add(client)
         reader.read_line_async(GLib.PRIORITY_DEFAULT, None, self._on_line, client)
         return True
@@ -1412,7 +1472,7 @@ class ControlServer:
         if line:
             try:
                 request = json.loads(line) if line.startswith("{") else parse_plain(line)
-                reply = self.handler(request if isinstance(request, dict) else {})
+                reply = self.handler(request if isinstance(request, dict) else {}, client[2])
             except Exception as exc:  # noqa: BLE001
                 reply = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
             data = (json.dumps(reply) + "\n").encode()
@@ -1451,6 +1511,7 @@ class WhaleApp(Gtk.Application):
             return
         if self._baking:
             return
+        log_event("start", pid=os.getpid(), argv=sys.argv[1:], saved_mood=self.config["mood"])
         self.hold()
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, self._quit_signal)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, self._quit_signal)
@@ -1652,6 +1713,7 @@ class WhaleApp(Gtk.Application):
         self.quit_app()
 
     def quit_app(self, *_args):
+        log_event("quit", pid=os.getpid(), via=_caller_name())
         if self.x11:
             self.x11.close()
             self.x11 = None
@@ -1714,7 +1776,21 @@ class WhaleApp(Gtk.Application):
         stream.read_line_async(GLib.PRIORITY_DEFAULT, None, on_line)
 
     # -- remote control ------------------------------------------------------------
-    def handle_request(self, req):
+    def handle_request(self, req, caller=()):
+        """Handle one control request, recording it and who sent it in the debug log."""
+        m = self.mascot
+        log_event("request", req=req, caller=[{"pid": pid, "cmd": cmd} for pid, cmd in caller],
+                  mood=m.mood if m else None, state=m.state if m else None)
+        try:
+            reply = self._handle_request(req)
+        except Exception as exc:
+            log_event("error", req=req, error=f"{type(exc).__name__}: {exc}")
+            raise
+        if not reply.get("ok"):
+            log_event("error", req=req, error=reply.get("error"))
+        return reply
+
+    def _handle_request(self, req):
         cmd = str(req.get("cmd", "")).lower()
         m = self.mascot
         key = req.get("key")

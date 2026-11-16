@@ -109,7 +109,15 @@ whalechan run -- make test               # thinks while it runs, then cheers or 
 whalechan move 600 300                   # place her; she perches if that's on a window top
 whalechan sleep | wake
 whalechan feed | show | hide | toggle | home | status | quit
+whalechan log -f                         # follow requests, who sent them, and mood changes
 ```
+
+- Every request is recorded in `~/.cache/whalechan/events.log` (JSON lines,
+  rotated at 2 MB) with the process chain that sent it, e.g.
+  `whalechan mood angry [4321] ← bash blink.sh [4300] ← whalechan daemon`, along
+  with each mood/state change and what caused it (a request, an escalation
+  timer, a revert, the menu). `whalechan log` prints it readably;
+  `whalechan --json log` prints the raw lines.
 
 - `react working` starts with the hand-on-chin thinking pose, thinks harder
   (hands on temples) after 5 min and has the overthinking meltdown after 10 min

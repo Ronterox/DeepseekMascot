@@ -74,6 +74,12 @@ def socket_path():
     return base / "whalechan.sock"
 
 
+def events_log_path():
+    """Debug log the mascot appends to: one JSON object per line (requests, mood changes)."""
+    base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "whalechan"
+    return base / "events.log"
+
+
 def normalize_event(name):
     name = (name or "").strip().lower()
     return EVENT_ALIASES.get(name, name)
