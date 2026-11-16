@@ -15,10 +15,15 @@ while true; do
 	# let her nap, and don't drag her out while she's hidden
 	[[ $sleeping == true || $visible != true ]] && continue
 
+	# borrow angry only when she's idle; thinking/waiting belong to someone else
+	# (an agent hook), and setting them again would restart their escalation
+	borrow=()
+	[[ $mood == neutral ]] && borrow=(-m angry)
+
 	whalechan move $x $y
-	whalechan mood angry
-	whalechan say -d 2.5 "$MESSAGE"
+	whalechan say -d 2.5 "${borrow[@]}" "$MESSAGE"
 	sleep 3
 	whalechan move $wx $wy
-	whalechan mood $mood
+	# give it back only if nobody changed her mood meanwhile
+	[[ ${#borrow[@]} -gt 0 && $(whalechan status | jq -r .mood) == angry ]] && whalechan mood neutral
 done

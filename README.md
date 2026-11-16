@@ -170,6 +170,12 @@ up random open `anx` tasks, learns your usual loop of windows, browser sites and
 tmux sessions from your last 100 visits, and nudges you toward the next stop
 when it has been neglected. `scripts/tasks.py --report` shows what she learned.
 
+[`scripts/blink.sh`](scripts/blink.sh) reminds you to blink: every `MIN_GAP`–`MAX_GAP`
+seconds she swims to the centre of the screen, says `MESSAGE`, and goes back. She
+borrows an angry face only when she is idle, and gives it back only if nothing
+changed her mood meanwhile, so a thinking or waiting mood from an agent is left
+alone. She skips the reminder while she naps or is hidden.
+
 Under the hood she listens on `$XDG_RUNTIME_DIR/whalechan.sock` (mode 600). Send
 one request per line, as JSON or plain text, and get one JSON reply per line:
 
