@@ -160,6 +160,11 @@ eval "$vars"
 When she starts a script at startup she sets `WHALECHAN_AUTOSTART=1`, and
 `whalechan input` then skips the form and uses the saved values.
 
+Scripts she runs never outlive her: quitting stops them, and if she dies
+abruptly (`kill -9`, a crash) the kernel sends them SIGTERM (via `setpriv
+--pdeathsig`). Their pids are also kept in `~/.local/state/whalechan/scripts.json`,
+and the next start stops any that are still around.
+
 [`scripts/tasks.py`](scripts/tasks.py) keeps you in your work loop: she brings
 up random open `anx` tasks, learns your usual loop of windows, browser sites and
 tmux sessions from your last 100 visits, and nudges you toward the next stop

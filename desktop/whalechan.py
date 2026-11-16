@@ -13,6 +13,7 @@ import math
 import os
 import random
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -71,6 +72,12 @@ os.execv(sys.argv[2], sys.argv[2:])
 """
 
 RUNNING_PROCS: dict[str, subprocess.Popen[bytes]] = {}
+# Scripts run in their own session, so they would outlive a mascot that dies without
+# quit_app (kill -9, a crash). setpriv makes the kernel SIGTERM them when she dies;
+# their pids are also recorded here so the next start can stop any leftovers.
+SCRIPTS_STATE = (Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
+                 / "whalechan" / "scripts.json")
+PDEATHSIG = ["setpriv", "--pdeathsig", "TERM", "--"] if shutil.which("setpriv") else []
 
 
 class _ByMood(dict):
@@ -1538,6 +1545,7 @@ class WhaleApp(Gtk.Application):
         if self.mascot.mood != "neutral":
             self.mascot.set_mood(self.mascot.mood, announce=False)
         self._setup_status_icon(frames)
+        self.kill_leftover_scripts()
         available = list_scripts()
         for script in self.config["autostart"]:
             if script in available:
@@ -1662,7 +1670,34 @@ class WhaleApp(Gtk.Application):
 
     def stop_script(self, script):
         if (proc := RUNNING_PROCS.pop(script, None)):
+            log_event("script", action="stop", script=script, pid=proc.pid, via=_caller_name())
             self.terminate_proc(proc)
+            self._record_scripts()
+
+    def _record_scripts(self):
+        try:
+            SCRIPTS_STATE.parent.mkdir(parents=True, exist_ok=True)
+            SCRIPTS_STATE.write_text(json.dumps({s: p.pid for s, p in RUNNING_PROCS.items() if p.poll() is None}))
+        except OSError as exc:
+            print(f"whalechan: could not record running scripts: {exc}", file=sys.stderr)
+
+    def kill_leftover_scripts(self):
+        """Stop scripts that an earlier mascot started and never got to stop."""
+        try:
+            recorded = json.loads(SCRIPTS_STATE.read_text())
+        except (OSError, ValueError):
+            return
+        for script, pid in (recorded.items() if isinstance(recorded, dict) else []):
+            try:
+                pid = int(pid)
+                argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+                # only if that pid still runs this script and leads its group (pids get reused)
+                if str(SCRIPTS_PATH / str(script)).encode() not in argv or os.getpgid(pid) != pid:
+                    continue
+                os.killpg(pid, signal.SIGTERM)
+            except (OSError, ValueError, TypeError):
+                continue
+            log_event("script", action="killed leftover", script=script, pid=pid)
 
     def run_script(self, script, autostart=False):
         """Run a script in the background, replacing it if it is already running."""
@@ -1673,11 +1708,15 @@ class WhaleApp(Gtk.Application):
             return
         env = dict(os.environ, WHALECHAN_AUTOSTART="1") if autostart else None
         try:
-            RUNNING_PROCS[script] = subprocess.Popen([str(path)], stdin=subprocess.DEVNULL, env=env,
-                                                     start_new_session=True, close_fds=True)
+            proc = subprocess.Popen([*PDEATHSIG, str(path)], stdin=subprocess.DEVNULL, env=env,
+                                    start_new_session=True, close_fds=True)
         except OSError as exc:
             print(f"whalechan: {path} failed to run: {exc}", file=sys.stderr)
             self.mascot.say(f"I couldn't run {script!r}. It says: {exc}")
+            return
+        RUNNING_PROCS[script] = proc
+        log_event("script", action="start", script=script, pid=proc.pid, autostart=autostart)
+        self._record_scripts()
 
     def script_clicked(self, script):
         """Run a script; if it is already running, ask whether to stop or restart it."""
@@ -1727,6 +1766,8 @@ class WhaleApp(Gtk.Application):
             self.mascot.destroy()
         for proc in RUNNING_PROCS.values():
             self.terminate_proc(proc)
+        RUNNING_PROCS.clear()
+        self._record_scripts()
         self.release()
         self.quit()
 
